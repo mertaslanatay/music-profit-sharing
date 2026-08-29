@@ -27,9 +27,22 @@ function songKeyOf(r: RawRow): string {
   return `t:${foldKey(r.artist)}|${t}`;
 }
 
-interface ArtistBucket extends Omit<ArtistAgg, "songs" | "spellings" | "songCount"> {
+interface LabelSlice {
+  gross: number;
+  quantity: number;
+  songs: Set<string>;
+  soloGross: number;
+  primaryGross: number;
+  featureGross: number;
+  territories: Tally;
+  retailers: Tally;
+}
+
+interface ArtistBucket
+  extends Omit<ArtistAgg, "songs" | "spellings" | "songCount" | "labelBreakdown"> {
   spellingGross: Map<string, number>;
   songMap: Map<string, SongCredit>;
+  labelSlices: Map<string, LabelSlice>;
 }
 
 /**
@@ -166,6 +179,7 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
           collaborators: {},
           spellingGross: new Map(),
           songMap: new Map(),
+          labelSlices: new Map(),
         };
         artistBuckets.set(key, b);
       }
@@ -209,6 +223,30 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
       sc.gross += credit;
       sc.quantity += creditQty;
 
+      // --- sanatçının bu labeldaki kırılımı ---
+      let ls = b.labelSlices.get(labelName);
+      if (!ls) {
+        ls = {
+          gross: 0,
+          quantity: 0,
+          songs: new Set<string>(),
+          soloGross: 0,
+          primaryGross: 0,
+          featureGross: 0,
+          territories: {},
+          retailers: {},
+        };
+        b.labelSlices.set(labelName, ls);
+      }
+      ls.gross += credit;
+      ls.quantity += creditQty;
+      ls.songs.add(sk);
+      if (combo.parts.length === 1) ls.soloGross += credit;
+      else if (i === 0) ls.primaryGross += credit;
+      else ls.featureGross += credit;
+      add(ls.territories, r.territory, credit);
+      add(ls.retailers, r.retailer, credit);
+
       lab.artists.set(key, (lab.artists.get(key) ?? 0) + credit);
     }
   }
@@ -227,6 +265,19 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
       }
     }
     const songs = Array.from(b.songMap.values()).sort((a, c) => c.gross - a.gross);
+    const labelBreakdown: Record<string, import("./types").ArtistLabelSlice> = {};
+    for (const [label, ls] of b.labelSlices) {
+      labelBreakdown[label] = {
+        gross: ls.gross,
+        quantity: ls.quantity,
+        songCount: ls.songs.size,
+        soloGross: ls.soloGross,
+        primaryGross: ls.primaryGross,
+        featureGross: ls.featureGross,
+        territories: ls.territories,
+        retailers: ls.retailers,
+      };
+    }
     artists.push({
       key: b.key,
       name: bestName,
@@ -243,6 +294,7 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
       territories: b.territories,
       retailers: b.retailers,
       labels: b.labels,
+      labelBreakdown,
       periods: b.periods,
       collaborators: b.collaborators,
       songs,

@@ -1,12 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ArtistAgg, Result } from "@/lib/types";
+import type { ArtistAgg, Result, Tally } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
+import { round2 } from "@/lib/calc";
 import { money, moneySmart, num, pct, topN } from "@/lib/format";
 import { Avatar, Bar, Card, Empty, Icon, Td, Th } from "../ui";
 
 type SortKey = "net" | "gross" | "name" | "songCount" | "quantity" | "featureGross";
+
+/** Bir satırın gösterilecek değerleri. Label filtresi aktifken bu değerler
+ * sanatçının yalnızca o labeldan gelen payını yansıtır. */
+interface RowView {
+  key: string;
+  name: string;
+  spellings: string[];
+  gross: number;
+  net: number;
+  deduction: number;
+  featureGross: number;
+  songCount: number;
+  quantity: number;
+  territories: Tally;
+  retailers: Tally;
+}
 
 export function Payouts({
   res,
@@ -23,27 +40,69 @@ export function Payouts({
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [labelFilter, setLabelFilter] = useState<string>("");
 
-  const rows = useMemo(() => {
+  const netRate = res.totals.netRate;
+
+  const rows = useMemo<RowView[]>(() => {
     const q = foldKey(query);
     let list = res.artists;
-    if (q) list = list.filter((a) => foldKey(a.name).includes(q) || a.spellings.some((s) => foldKey(s).includes(q)));
+    if (q)
+      list = list.filter(
+        (a) => foldKey(a.name).includes(q) || a.spellings.some((s) => foldKey(s).includes(q))
+      );
     if (labelFilter) list = list.filter((a) => (a.labels[labelFilter] ?? 0) > 0);
 
-    const sorted = [...list].sort((a, b) => {
+    // Label filtresi aktifse her sanatçının SADECE o labeldaki kırılımını göster.
+    const views: RowView[] = list.map((a) => {
+      if (!labelFilter) {
+        return {
+          key: a.key,
+          name: a.name,
+          spellings: a.spellings,
+          gross: a.gross,
+          net: a.net,
+          deduction: a.deduction,
+          featureGross: a.featureGross,
+          songCount: a.songCount,
+          quantity: a.quantity,
+          territories: a.territories,
+          retailers: a.retailers,
+        };
+      }
+      const s = a.labelBreakdown[labelFilter];
+      const gross = s?.gross ?? 0;
+      const net = round2(gross * netRate);
+      return {
+        key: a.key,
+        name: a.name,
+        spellings: a.spellings,
+        gross,
+        net,
+        deduction: round2(gross - net),
+        featureGross: s?.featureGross ?? 0,
+        songCount: s?.songCount ?? 0,
+        quantity: s?.quantity ?? 0,
+        territories: s?.territories ?? {},
+        retailers: s?.retailers ?? {},
+      };
+    });
+
+    views.sort((a, b) => {
       let r = 0;
       if (sort === "name") r = a.name.localeCompare(b.name, "tr");
       else r = (a[sort] as number) - (b[sort] as number);
       return dir === "asc" ? r : -r;
     });
-    return sorted;
-  }, [res.artists, query, sort, dir, labelFilter]);
+    return views;
+  }, [res.artists, query, sort, dir, labelFilter, netRate]);
 
   const shown = rows.reduce(
     (acc, a) => ({ gross: acc.gross + a.gross, net: acc.net + a.net, ded: acc.ded + a.deduction }),
     { gross: 0, net: 0, ded: 0 }
   );
 
-  const maxNet = rows[0]?.net ?? 0;
+  // Bar için ölçek: net'e göre sıralı değilse en büyük net'i ayrıca bul.
+  const maxNet = rows.reduce((m, a) => Math.max(m, a.net), 0);
+  const scopeTotal = labelFilter ? shown.net : res.totals.received;
 
   const head = (key: SortKey, label: string, align: "left" | "right" = "right") => (
     <Th
@@ -72,7 +131,16 @@ export function Payouts({
               ? `${num(res.artists.length)} sanatçı`
               : `${num(rows.length)} / ${num(res.artists.length)} sanatçı`}
             {" · "}
-            gösterilen toplam <b className="text-ink-700">{money(shown.net)}</b>
+            {labelFilter ? (
+              <>
+                <b className="text-ink-700">{labelFilter}</b> ödemesi{" "}
+                <b className="text-ink-700">{money(shown.net)}</b>
+              </>
+            ) : (
+              <>
+                gösterilen toplam <b className="text-ink-700">{money(shown.net)}</b>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -99,6 +167,16 @@ export function Payouts({
           ))}
         </div>
       </div>
+
+      {labelFilter && (
+        <div className="px-5 py-2.5 bg-brand-50/60 border-b border-line flex items-center gap-2">
+          <Icon name="tag" size={13} className="text-brand-600 shrink-0" />
+          <p className="text-[12px] text-brand-700/90">
+            Tutarlar yalnızca <b>{labelFilter}</b> labelından gelen payı gösteriyor. Birden fazla
+            labelda geliri olan sanatçı, her labelda yalnızca o labeldaki kazancıyla görünür.
+          </p>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <Empty title="Sonuç yok" sub="Arama veya label filtresini değiştirmeyi dene." />
@@ -130,7 +208,7 @@ export function Payouts({
                   a={a}
                   i={i}
                   maxNet={maxNet}
-                  total={res.totals.received}
+                  total={scopeTotal}
                   precise={precise}
                   onClick={() => onArtist(a.key)}
                 />
@@ -167,7 +245,7 @@ function Row({
   precise,
   onClick,
 }: {
-  a: ArtistAgg;
+  a: RowView;
   i: number;
   maxNet: number;
   total: number;
@@ -210,7 +288,7 @@ function Row({
         <div className="flex items-center gap-2">
           <Bar value={a.net} max={maxNet} />
           <span className="text-[10.5px] text-ink-400 tabular w-10 text-right shrink-0">
-            {pct(total > 0 ? a.gross / total : 0)}
+            {pct(total > 0 ? a.net / total : 0)}
           </span>
         </div>
       </Td>
