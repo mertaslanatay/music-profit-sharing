@@ -25,18 +25,17 @@ export const NAV: { key: ViewKey; label: string; icon: string; group: string }[]
 export function Sidebar({
   view,
   onView,
-  fileName,
-  artistCount,
   onReset,
-  ruleBadge,
+  hideRules,
 }: {
   view: ViewKey;
   onView: (v: ViewKey) => void;
-  fileName?: string;
-  artistCount?: number;
+  /** Yönetim ekranına git */
   onReset: () => void;
-  ruleBadge?: number;
+  /** Kurallar sekmesi v2'de yönetim tarafına taşındı */
+  hideRules?: boolean;
 }) {
+  const items = hideRules ? NAV.filter((i) => i.key !== "rules") : NAV;
   let lastGroup = "";
   return (
     <aside className="w-[232px] shrink-0 bg-card border-r border-line flex flex-col h-full no-print">
@@ -54,7 +53,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 px-3 overflow-y-auto scroll-thin">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const showGroup = item.group !== lastGroup;
           lastGroup = item.group;
           const active = view === item.key;
@@ -77,44 +76,24 @@ export function Sidebar({
               >
                 <Icon name={item.icon} size={17} strokeWidth={active ? 2 : 1.8} />
                 <span className="flex-1 text-left">{item.label}</span>
-                {item.key === "rules" && ruleBadge ? (
-                  <span
-                    className={clsx(
-                      "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                      active ? "bg-white/25 text-white" : "bg-accent-amber/15 text-accent-amber"
-                    )}
-                  >
-                    {ruleBadge}
-                  </span>
-                ) : null}
               </button>
             </div>
           );
         })}
       </nav>
 
-      {fileName && (
-        <div className="p-3 border-t border-line">
-          <div className="rounded-xl bg-ink-900/[0.03] p-3">
-            <div className="flex items-start gap-2">
-              <Icon name="file" size={15} className="text-ink-400 mt-0.5 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-medium text-ink-700 truncate" title={fileName}>
-                  {fileName}
-                </p>
-                <p className="text-[11px] text-ink-400 mt-0.5">{artistCount ?? 0} sanatçı</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onReset}
-              className="mt-2.5 w-full text-[11.5px] font-medium text-ink-500 hover:text-accent-rose transition-colors text-left"
-            >
-              Yeni dosya yükle →
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="p-3 border-t border-line">
+        <button
+          type="button"
+          onClick={onReset}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+        >
+          <Icon name="sliders" size={16} />
+          <span className="flex-1 text-left">Yönetim</span>
+          <Icon name="back" size={13} className="rotate-180 opacity-50" />
+        </button>
+      </div>
+
     </aside>
   );
 }

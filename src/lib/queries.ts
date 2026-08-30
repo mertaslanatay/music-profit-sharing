@@ -1,7 +1,9 @@
 import { query, n } from "./db";
 import { applyProRata } from "./calc";
 import { periodDisplay } from "./period";
-import type { ArtistAgg, ArtistLabelSlice, LabelAgg, Result, SongAgg, Tally } from "./types";
+import { equalWeights, splitArtists } from "./artists";
+import { DEFAULT_SPLIT } from "./types";
+import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
 /**
  * Veritabanından ekranların beklediği `Result` yapısını kurar.
@@ -67,15 +69,20 @@ export async function listPeriods(publishedOnly = true): Promise<PeriodRow[]> {
     id: string; label: string; sort: number; year: number;
     month: number | null; quarter: number | null; gross: number; artist_count: number;
   }>(
+    // Durum filtresi ALT SORGUDA olmalı. LEFT JOIN'in ON koşuluna konursa
+    // eşleşmeyen rapor satırı elenmez, yalnızca NULL'lanır — taslak raporun
+    // credits satırları toplama dahil olurdu.
     `select p.id, p.label, p.sort, p.year, p.month, p.quarter,
-            coalesce(sum(c.gross),0)::float8 gross,
-            count(distinct c.artist_id)::int artist_count
+            coalesce(sum(v.gross),0)::float8 gross,
+            count(distinct v.artist_id)::int artist_count
      from periods p
-     left join credits c on c.period_id = p.id
-     left join reports r on r.id = c.report_id
-     ${publishedOnly ? `and r.status in ('published','locked')` : ""}
+     left join (
+       select c.period_id, c.gross, c.artist_id
+       from credits c join reports r on r.id = c.report_id
+       ${publishedOnly ? `where r.status in ('published','locked')` : ""}
+     ) v on v.period_id = p.id
      group by p.id, p.label, p.sort, p.year, p.month, p.quarter
-     having coalesce(sum(c.gross),0) <> 0
+     having coalesce(sum(v.gross),0) <> 0
      order by p.sort desc`
   );
   return rows.map((r) => ({
@@ -469,11 +476,42 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
     buildWhere(scope, "rr").params
   );
 
+  // --- ortak yapımlar (bölüşüm özeti kartı) -------------------------------
+  // Bir şarkının tüm payları toplandığında satır gelirine eşit olur, çünkü
+  // paylar 1'e tamamlanır. Bu yüzden sum(gross) doğrudan yapım gelirini verir.
+  const splitRow = await query<{ split: EngineConfig["split"] }>(
+    `select split from engine_rules where is_active limit 1`
+  );
+  const activeSplit = { ...DEFAULT_SPLIT, ...(splitRow[0]?.split ?? {}) };
+  const comboRows = await query<{
+    artist_string: string; n: number; gross: number; songs: number; rows: number;
+  }>(
+    `select s.artist_string, max(c.total_artists)::int n, sum(c.gross)::float8 gross,
+            count(distinct c.song_id)::int songs, count(*)::int rows
+     ${J} join songs s on s.id = c.song_id
+     ${w.sql}${w.sql ? " and" : "where"} c.total_artists > 1
+     group by s.artist_string
+     order by gross desc`,
+    w.params
+  );
+  const combos: ComboAgg[] = comboRows.map((r) => {
+    const parts = splitArtists(r.artist_string, activeSplit);
+    return {
+      artistString: r.artist_string,
+      parts,
+      gross: n(r.gross),
+      rowCount: r.rows,
+      songCount: r.songs,
+      weights: equalWeights(parts.length),
+      isOverridden: false,
+    };
+  });
+
   return {
     artists,
     songs,
     labels,
-    combos: [],            // kural ekranı için; admin tarafında ayrı yüklenir
+    combos,
     territories,
     retailers,
     periods,
