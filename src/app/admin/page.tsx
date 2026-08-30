@@ -7,7 +7,7 @@ import type { UserListRow } from "@/app/api/admin/users/route";
 import { Icon } from "@/components/ui";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
-import { audit, isAdmin } from "@/lib/access";
+import { audit, isAdmin, needsMfaSetup } from "@/lib/access";
 import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export default async function AdminPage() {
   if (authConfigured()) {
     const { viewer, reason } = await getSession();
     if (!viewer) redirect(reason === "no-session" ? "/giris?devam=/admin" : "/beklemede");
+    if (needsMfaSetup(viewer)) redirect("/guvenlik");
     if (!isAdmin(viewer)) {
       const m = await requestMeta();
       await audit({

@@ -6,7 +6,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
-import { scopeFor, isAdmin, audit } from "@/lib/access";
+import { scopeFor, isAdmin, needsMfaSetup, audit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,7 @@ export default async function Page({
   if (authConfigured()) {
     if (!viewer && reason === "no-session") redirect("/giris");
     if (!viewer) redirect("/beklemede");
+    if (needsMfaSetup(viewer)) redirect("/guvenlik");
   }
   const access = authConfigured() ? scopeFor(viewer) : undefined;
 

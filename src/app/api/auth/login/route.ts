@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { audit, rateLimit, viewerByEmail } from "@/lib/access";
 import { supabaseServer, authConfigured } from "@/lib/supabase/server";
+import { readMfaState, mfaChallengeNeeded } from "@/lib/mfa";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,19 @@ export async function POST(req: Request) {
   }
 
   const viewer = await viewerByEmail(email);
+
+  // Bir TOTP faktörü doğrulanmışsa şifre tek başına yetmez — ikinci adım
+  // (6 haneli kod) tamamlanana kadar girişi bitirmiyoruz. Yalnızca admin
+  // hesabında faktör kurulu olabileceği için bu kontrol pratikte sadece
+  // adminleri etkiler.
+  const mfaState = await readMfaState(sb);
+  if (mfaChallengeNeeded(mfaState) && mfaState.factorId) {
+    await audit({
+      userId: viewer?.userId ?? null, action: "login_mfa_pending", resource: email, ip, userAgent: ua,
+    });
+    return NextResponse.json({ ok: true, mfaRequired: true, factorId: mfaState.factorId });
+  }
+
   await audit({
     userId: viewer?.userId ?? null, action: "login", resource: email, ip, userAgent: ua,
     meta: { role: viewer?.role ?? null, status: viewer?.status ?? "profilsiz" },

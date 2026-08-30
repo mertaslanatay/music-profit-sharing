@@ -26,6 +26,12 @@ export interface Viewer {
   canSeeLabelTotals: boolean;
   /** Sanatçı, label içindeki diğer sanatçıların rakamlarını görebilsin mi? */
   canSeeOtherArtists: boolean;
+  /**
+   * İki adımlı doğrulama (TOTP) sağlanmış mı? Yalnızca admin rolü için
+   * anlamlı — session.ts tarafından Supabase Auth'un o anki oturum
+   * seviyesine (AAL) bakılarak doldurulur. Diğer roller için her zaman true.
+   */
+  mfaOk: boolean;
 }
 
 /** Görüntüleme kapsamı — SQL süzmesine çevrilir. */
@@ -55,6 +61,10 @@ export function scopeFor(v: Viewer | null): AccessScope {
   if (v.status !== "active") return deny;
 
   if (v.role === "admin") {
+    // 2FA tamamlanmadan admin'in tam-erişim kapsamı açılmaz — aksi hâlde
+    // isAdmin() güvenlik kapısını kapatırken, sıradan veri sorguları
+    // (Panel, Ödeme Listesi…) her şeyi göstermeye devam ederdi.
+    if (v.mfaOk === false) return deny;
     return { labelIds: null, artistIds: null, denied: false };
   }
 
@@ -76,8 +86,19 @@ export function scopeFor(v: Viewer | null): AccessScope {
   };
 }
 
-/** Bu kullanıcı yönetim ekranlarına girebilir mi? */
-export const isAdmin = (v: Viewer | null): boolean => v?.role === "admin" && v.status === "active";
+/**
+ * Bu kullanıcı yönetim ekranlarına girebilir mi?
+ *
+ * Admin hesabında 2FA zorunlu (bkz. v2-sartname.md § 5) — TOTP kurulu ve
+ * o oturumda doğrulanmış olmadan admin yetkileri açılmaz. mfaOk, session.ts
+ * içinde Supabase Auth'un o anki AAL seviyesine bakılarak hesaplanır.
+ */
+export const isAdmin = (v: Viewer | null): boolean =>
+  v?.role === "admin" && v.status === "active" && v.mfaOk !== false;
+
+/** Admin ama 2FA'sı henüz tamamlanmamış — kuruluma yönlendirilmeli. */
+export const needsMfaSetup = (v: Viewer | null): boolean =>
+  v?.role === "admin" && v.status === "active" && v.mfaOk === false;
 
 /** Ödeme kaydedebilir / yetki atayabilir mi? */
 export const canManagePayments = (v: Viewer | null): boolean => isAdmin(v);
@@ -154,6 +175,10 @@ const toViewer = (r: UserRow): Viewer => ({
   artistIds: r.artist_ids ?? [],
   canSeeLabelTotals: r.can_see_label_totals,
   canSeeOtherArtists: r.can_see_other_artists,
+  // Varsayılan true — admin için session.ts, o oturumun gerçek AAL durumuna
+  // bakarak bunu güncelliyor. Burada (salt SQL okumasında) Supabase Auth
+  // bağlamı yok, bu yüzden bilerek iyimser başlıyoruz.
+  mfaOk: true,
 });
 
 /** Supabase Auth kullanıcı id'sinden profil ve yetkileri getirir. */

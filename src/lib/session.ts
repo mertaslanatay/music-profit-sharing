@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { query, queryOne } from "./db";
 import { supabaseServer, authConfigured } from "./supabase/server";
 import { viewerByAuthId, viewerByEmail, audit, type Viewer } from "./access";
+import { readMfaState, mfaOkFromState } from "./mfa";
 
 /**
  * Oturum → Viewer köprüsü.
@@ -62,6 +63,13 @@ export async function getSession(): Promise<SessionInfo> {
   if (!viewer) return { viewer: null, reason: "no-profile", authEmail: email };
   if (viewer.status === "pending") return { viewer: null, reason: "pending", authEmail: email };
   if (viewer.status === "suspended") return { viewer: null, reason: "suspended", authEmail: email };
+
+  // 2FA yalnızca admin için zorunlu — diğer rollerde toViewer() zaten
+  // mfaOk: true veriyor, gereksiz bir Supabase Auth çağrısından kaçınıyoruz.
+  if (viewer.role === "admin") {
+    const state = await readMfaState(sb);
+    viewer = { ...viewer, mfaOk: mfaOkFromState(state) };
+  }
 
   // Son görülme — dakikada bir güncellenir, her istekte değil.
   void query(
