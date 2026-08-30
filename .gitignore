@@ -11,3 +11,4 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 scripts/fix_*.py
+.env.local
