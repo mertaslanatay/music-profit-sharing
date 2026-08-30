@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Müzik Gelir Dağılımı",
+  title: "M4NM Music Profit",
   description:
     "Virgin Music dağıtım raporlarından sanatçı hakedişlerini hesaplayan araç. Excel yükle, bölüşümü ve SWIFT kesintisini otomatik hesapla.",
 };

@@ -28,11 +28,12 @@ export function Uploader({
     <div className="min-h-full flex items-center justify-center p-6">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8 rise">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-brand-500 items-center justify-center mb-4">
-            <Icon name="music" size={26} className="text-white" strokeWidth={2} />
+          <div className="inline-flex w-16 h-16 rounded-2xl bg-brand-50 items-center justify-center mb-4 p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-[26px] font-semibold text-ink-900 tracking-tight">
-            Müzik Gelir Dağılımı
+            M4NM Music Profit
           </h1>
           <p className="text-[14px] text-ink-500 mt-2 max-w-md mx-auto leading-relaxed">
             Virgin dağıtım raporunu sürükleyip bırak. Sanatçı hakedişlerini, ortak şarkı
