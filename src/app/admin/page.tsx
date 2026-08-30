@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { listReports, type ReportRow } from "@/lib/queries";
-import { AdminPanel } from "@/components/AdminPanel";
+import { listBalances, type BalanceRow } from "@/lib/payments";
+import { AdminTabs } from "@/components/AdminTabs";
 import { Icon } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  let reports: ReportRow[];
+  let reports: ReportRow[] = [];
+  let balances: BalanceRow[] = [];
   let error: string | null = null;
   try {
-    reports = await listReports();
+    [reports, balances] = await Promise.all([listReports(), listBalances()]);
   } catch (e) {
-    reports = [];
     error = e instanceof Error ? e.message : "Veritabanına bağlanılamadı.";
   }
 
@@ -25,7 +26,7 @@ export default async function AdminPage() {
           </div>
           <div>
             <h1 className="text-[16px] font-semibold text-ink-900 leading-tight">Yönetim</h1>
-            <p className="text-[11.5px] text-ink-400 leading-tight">Rapor yükleme ve dönem yönetimi</p>
+            <p className="text-[11.5px] text-ink-400 leading-tight">Rapor, ödeme ve banka yönetimi</p>
           </div>
         </div>
         <Link
@@ -36,7 +37,7 @@ export default async function AdminPage() {
         </Link>
       </header>
 
-      <div className="p-6 max-w-6xl mx-auto">
+      <div className="p-6 max-w-7xl mx-auto">
         {error ? (
           <div className="rounded-xl2 bg-rose-50 border border-rose-200 p-5">
             <div className="flex items-start gap-3">
@@ -54,7 +55,7 @@ export default async function AdminPage() {
             </div>
           </div>
         ) : (
-          <AdminPanel initialReports={reports} />
+          <AdminTabs reports={reports} balances={balances} />
         )}
       </div>
     </main>
