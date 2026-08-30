@@ -249,6 +249,8 @@ export interface RecordPaymentInput {
   exchangeRate?: number | null;
   note?: string | null;
   paidAt?: string | null;
+  /** Ödemeyi kaydeden yönetici — geriye dönük "bunu kim girdi" sorusu için. */
+  createdBy?: string | null;
 }
 
 export async function recordPayment(input: RecordPaymentInput): Promise<{ id: string }> {
@@ -287,8 +289,9 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
 
     const pay = await c.query<{ id: string }>(
       `insert into payments (artist_id, amount_usd, paid_currency, paid_amount,
-                             exchange_rate, iban_snapshot, bank_snapshot, note, paid_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::timestamptz, now()))
+                             exchange_rate, iban_snapshot, bank_snapshot, note, paid_at,
+                             recorded_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::timestamptz, now()), $10)
        returning id`,
       [
         input.artistId,
@@ -300,6 +303,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
         bank.rows[0]?.bank_name ?? null,
         input.note ?? null,
         input.paidAt ?? null,
+        input.createdBy ?? null,
       ]
     );
     const paymentId = pay.rows[0].id;

@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { listBalances, recordPayment } from "@/lib/payments";
+import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
-const fail = (e: unknown, code = 500) =>
-  NextResponse.json({ error: e instanceof Error ? e.message : "Bilinmeyen hata" }, { status: code });
-
+/** Bakiye listesi — tüm sanatçıların rakamlarını içerdiği için yalnızca admin. */
 export async function GET() {
   try {
+    await requireAdmin("balances_denied");
     return NextResponse.json({ balances: await listBalances() });
-  } catch (e) { return fail(e); }
+  } catch (e) { return denyResponse(e); }
 }
 
+/** Ödeme kaydet. Para hareketi olduğu için her zaman denetim kaydına yazılır. */
 export async function POST(req: Request) {
   try {
+    const admin = await requireAdmin("payment_create_denied");
     const body = await req.json();
     const out = await recordPayment({
       artistId: String(body.artistId),
@@ -27,7 +29,13 @@ export async function POST(req: Request) {
         ? null : Number(body.exchangeRate),
       note: body.note ?? null,
       paidAt: body.paidAt ?? null,
+      createdBy: admin?.userId ?? null,
+    });
+    await logAction(admin, "payment_recorded", `artist:${body.artistId}`, {
+      paidAmount: Number(body.paidAmount),
+      currency: body.paidCurrency === "TRY" ? "TRY" : "USD",
+      periods: (body.allocations ?? []).length,
     });
     return NextResponse.json({ ok: true, ...out });
-  } catch (e) { return fail(e, 400); }
+  } catch (e) { return denyResponse(e); }
 }

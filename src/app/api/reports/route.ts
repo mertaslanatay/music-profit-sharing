@@ -7,6 +7,7 @@ import { ingestReport } from "@/lib/ingest";
 import { getActiveRules } from "@/lib/rules";
 import { listReports } from "@/lib/queries";
 import { transaction, query } from "@/lib/db";
+import { requireAdmin, denyResponse, logAction, Denied } from "@/lib/guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,8 +15,10 @@ export const maxDuration = 120;
 /** Rapor listesi (admin). */
 export async function GET() {
   try {
+    await requireAdmin("reports_list_denied");
     return NextResponse.json({ reports: await listReports() });
   } catch (e) {
+    if (e instanceof Denied) return denyResponse(e);
     return NextResponse.json({ error: msg(e) }, { status: 500 });
   }
 }
@@ -26,6 +29,7 @@ export async function GET() {
  */
 export async function POST(req: Request) {
   try {
+    const admin = await requireAdmin("report_upload_denied");
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
@@ -96,13 +100,18 @@ export async function POST(req: Request) {
         notes: String(form.get("notes") ?? "") || null,
       })
     );
-    await query(`update reports set rules_version = $2 where id = $1`, [
+    await query(`update reports set rules_version = $2, uploaded_by = $3 where id = $1`, [
       result.reportId,
       rules.version,
+      admin?.userId ?? null,
     ]);
 
+    await logAction(admin, "report_uploaded", `report:${result.reportId}`, {
+      title, fileName: file.name, rows: rows.length, deduction,
+    });
     return NextResponse.json({ ok: true, report: result });
   } catch (e) {
+    if (e instanceof Denied) return denyResponse(e);
     return NextResponse.json({ error: msg(e) }, { status: 500 });
   }
 }

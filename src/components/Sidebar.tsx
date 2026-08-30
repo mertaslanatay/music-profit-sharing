@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import { Icon } from "./ui";
+import { LogoutButton } from "./auth/LogoutButton";
 
 export type ViewKey =
   | "overview"
@@ -22,11 +23,27 @@ export const NAV: { key: ViewKey; label: string; icon: string; group: string }[]
   { key: "rules", label: "Kurallar", icon: "sliders", group: "Ayarlar" },
 ];
 
+/** Kenar çubuğunda gösterilen kullanıcı özeti. */
+export interface ViewerBadge {
+  fullName: string;
+  email: string;
+  role: "admin" | "label_manager" | "artist" | "accountant";
+  isAdmin: boolean;
+}
+
+const ROLE_TR: Record<ViewerBadge["role"], string> = {
+  admin: "Yönetici",
+  label_manager: "Label yöneticisi",
+  artist: "Sanatçı",
+  accountant: "Muhasebe",
+};
+
 export function Sidebar({
   view,
   onView,
   onReset,
   hideRules,
+  viewer,
 }: {
   view: ViewKey;
   onView: (v: ViewKey) => void;
@@ -34,6 +51,8 @@ export function Sidebar({
   onReset: () => void;
   /** Kurallar sekmesi v2'de yönetim tarafına taşındı */
   hideRules?: boolean;
+  /** Oturum açık kullanıcı — auth kurulmadan önce null */
+  viewer?: ViewerBadge | null;
 }) {
   const items = hideRules ? NAV.filter((i) => i.key !== "rules") : NAV;
   let lastGroup = "";
@@ -82,16 +101,32 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="p-3 border-t border-line">
-        <button
-          type="button"
-          onClick={onReset}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
-        >
-          <Icon name="sliders" size={16} />
-          <span className="flex-1 text-left">Yönetim</span>
-          <Icon name="back" size={13} className="rotate-180 opacity-50" />
-        </button>
+      <div className="p-3 border-t border-line space-y-0.5">
+        {/* Yönetim yalnızca yöneticide görünür. Bu bir kolaylık; asıl engel
+            sunucu tarafındaki yetki denetimidir. */}
+        {(!viewer || viewer.isAdmin) && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+          >
+            <Icon name="sliders" size={16} />
+            <span className="flex-1 text-left">Yönetim</span>
+            <Icon name="back" size={13} className="rotate-180 opacity-50" />
+          </button>
+        )}
+
+        {viewer && (
+          <div className="pt-1.5 mt-1.5 border-t border-line">
+            <div className="px-3 py-2">
+              <p className="text-[12.5px] font-medium text-ink-900 truncate" title={viewer.email}>
+                {viewer.fullName}
+              </p>
+              <p className="text-[11px] text-ink-400 leading-tight mt-0.5">{ROLE_TR[viewer.role]}</p>
+            </div>
+            <LogoutButton />
+          </div>
+        )}
       </div>
 
     </aside>

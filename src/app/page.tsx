@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
+import { getSession, requestMeta } from "@/lib/session";
+import { authConfigured } from "@/lib/supabase/server";
+import { scopeFor, isAdmin, audit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +18,25 @@ export default async function Page({
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
 
+  // --- kim bakıyor -------------------------------------------------------
+  // Auth kurulmadan önce (yerel geliştirme) kısıt yoktur; kurulduğu anda
+  // her sorgu kullanıcının kapsamıyla süzülür.
+  const { viewer, reason } = authConfigured()
+    ? await getSession()
+    : { viewer: null, reason: null as null };
+  if (authConfigured()) {
+    if (!viewer && reason === "no-session") redirect("/giris");
+    if (!viewer) redirect("/beklemede");
+  }
+  const access = authConfigured() ? scopeFor(viewer) : undefined;
+
   const VIEWS: ViewKey[] = ["overview", "payouts", "songs", "labels", "geo", "platforms"];
   const rawView = str("v");
   const view: ViewKey = VIEWS.includes(rawView as ViewKey) ? (rawView as ViewKey) : "overview";
 
   let periods, reports;
   try {
-    [periods, reports] = await Promise.all([listPeriods(), listReports()]);
+    [periods, reports] = await Promise.all([listPeriods(true, access), listReports(access)]);
   } catch (e) {
     return <Fail message={e instanceof Error ? e.message : "Veritabanına bağlanılamadı."} />;
   }
@@ -37,12 +53,26 @@ export default async function Page({
   const validPeriods = new Set(periods.map((p) => p.id));
   const periodIds = str("p").split(",").map((x) => x.trim()).filter((x) => validPeriods.has(x));
 
-  const scope: Scope =
-    view === "payouts"
+  const scope: Scope = {
+    ...(view === "payouts"
       ? (reportId === "all" ? {} : { reportId })
-      : (periodIds.length ? { periodIds } : {});
+      : (periodIds.length ? { periodIds } : {})),
+    access,
+  };
 
   const result = await loadResult(scope);
+
+  // Mali veri görüntüleme her zaman kaydedilir — kimin neye ne zaman
+  // baktığı sonradan sorulabilmeli.
+  if (viewer) {
+    const meta = await requestMeta();
+    void audit({
+      userId: viewer.userId, action: "view_dashboard", resource: view,
+      ip: meta.ip, userAgent: meta.userAgent,
+      meta: { reportId, periodIds, gross: Math.round(result.totals.gross * 100) / 100 },
+    });
+  }
+
   return (
     <Dashboard
       result={result}
@@ -51,6 +81,12 @@ export default async function Page({
       view={view}
       reportId={reportId}
       periodIds={periodIds}
+      viewer={viewer ? {
+        fullName: viewer.fullName,
+        email: viewer.email,
+        role: viewer.role,
+        isAdmin: isAdmin(viewer),
+      } : null}
     />
   );
 }

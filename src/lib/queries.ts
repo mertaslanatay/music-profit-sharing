@@ -3,6 +3,7 @@ import { applyProRata } from "./calc";
 import { periodDisplay } from "./period";
 import { equalWeights, splitArtists } from "./artists";
 import { DEFAULT_SPLIT } from "./types";
+import { accessSql, type AccessScope } from "./access";
 import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
 /**
@@ -20,11 +21,23 @@ export interface Scope {
   reportId?: string;
   /** Yalnızca yayınlanmış raporlar (varsayılan true; admin false verebilir). */
   publishedOnly?: boolean;
+  /**
+   * Kullanıcının görme yetkisi. VERİLMEZSE KISIT YOKTUR — bu yüzden çağıran
+   * taraf her zaman `scopeFor(viewer)` sonucunu geçirmelidir. Sunucu tarafı
+   * rotaları bunu zorunlu kılar; testler ve toplu işler kısıtsız çalışabilir.
+   */
+  access?: AccessScope;
 }
 
 interface Where {
   sql: string;
   params: unknown[];
+}
+
+/** Yetki kısıtı var mı? (admin veya kısıtsız çağrı → false) */
+export function isRestricted(a?: AccessScope): boolean {
+  if (!a) return false;
+  return a.denied || a.labelIds !== null || a.artistIds !== null;
 }
 
 function buildWhere(scope: Scope, alias = "c"): Where {
@@ -40,6 +53,12 @@ function buildWhere(scope: Scope, alias = "c"): Where {
   }
   if (scope.publishedOnly !== false) {
     parts.push(`r.status in ('published','locked')`);
+  }
+  // Yetki süzmesi EN SON eklenir; parametre numaraları mevcut sayıdan devam eder.
+  if (scope.access) {
+    const a = accessSql(scope.access, params.length, alias);
+    parts.push(...a.conditions);
+    params.push(...a.params);
   }
   return { sql: parts.length ? `where ${parts.join(" and ")}` : "", params };
 }
@@ -64,14 +83,26 @@ export interface PeriodRow {
   artistCount: number;
 }
 
-export async function listPeriods(publishedOnly = true): Promise<PeriodRow[]> {
+export async function listPeriods(
+  publishedOnly = true,
+  access?: AccessScope
+): Promise<PeriodRow[]> {
+  const inner: string[] = [];
+  const params: unknown[] = [];
+  if (publishedOnly) inner.push(`r.status in ('published','locked')`);
+  if (access) {
+    const a = accessSql(access, params.length, "c");
+    inner.push(...a.conditions);
+    params.push(...a.params);
+  }
   const rows = await query<{
     id: string; label: string; sort: number; year: number;
     month: number | null; quarter: number | null; gross: number; artist_count: number;
   }>(
     // Durum filtresi ALT SORGUDA olmalı. LEFT JOIN'in ON koşuluna konursa
     // eşleşmeyen rapor satırı elenmez, yalnızca NULL'lanır — taslak raporun
-    // credits satırları toplama dahil olurdu.
+    // credits satırları toplama dahil olurdu. Yetki süzmesi de aynı sebeple
+    // burada: kullanıcının kaydı olmayan dönem hiç listelenmemeli.
     `select p.id, p.label, p.sort, p.year, p.month, p.quarter,
             coalesce(sum(v.gross),0)::float8 gross,
             count(distinct v.artist_id)::int artist_count
@@ -79,11 +110,12 @@ export async function listPeriods(publishedOnly = true): Promise<PeriodRow[]> {
      left join (
        select c.period_id, c.gross, c.artist_id
        from credits c join reports r on r.id = c.report_id
-       ${publishedOnly ? `where r.status in ('published','locked')` : ""}
+       ${inner.length ? `where ${inner.join(" and ")}` : ""}
      ) v on v.period_id = p.id
      group by p.id, p.label, p.sort, p.year, p.month, p.quarter
      having coalesce(sum(v.gross),0) <> 0
-     order by p.sort desc`
+     order by p.sort desc`,
+    params
   );
   return rows.map((r) => ({
     id: r.id,
@@ -118,15 +150,42 @@ export interface ReportRow {
   periodDisplay: string;
 }
 
-export async function listReports(): Promise<ReportRow[]> {
+/**
+ * Rapor (ödeme partisi) listesi.
+ *
+ * `access` verilirse rakamlar kullanıcının payına indirgenir: brüt, kesinti
+ * ve satır sayısı kendi kredilerinden hesaplanır, rapor geneli görünmez.
+ * Kullanıcının hiç kaydı olmayan parti listeye hiç girmez.
+ */
+export async function listReports(access?: AccessScope): Promise<ReportRow[]> {
+  const restricted = isRestricted(access);
+  const a = access ? accessSql(access, 0, "c") : { conditions: [], params: [] };
+  // Kısıtlıysa toplamlar credits'ten; değilse raporun kendi alanlarından.
+  const scoped = restricted
+    ? `left join lateral (
+         select coalesce(sum(c.gross),0)::float8 g, count(*)::int rc
+         from credits c
+         where c.report_id = r.id ${a.conditions.length ? "and " + a.conditions.join(" and ") : ""}
+       ) sc on true`
+    : "";
+  const grossExpr   = restricted ? `sc.g` : `r.gross::float8`;
+  const rowExpr     = restricted ? `sc.rc` : `r.row_count`;
+  // Kesinti raporun brütüne oranla tahsis edilir — mgr'ın gördüğü kesinti
+  // kendi payına düşen kadardır.
+  const dedExpr     = restricted
+    ? `(case when r.gross <> 0 then r.deduction::float8 * (sc.g / r.gross::float8) else 0 end)`
+    : `r.deduction::float8`;
+
   const rows = await query<{
     id: string; title: string; file_name: string; gross: number; deduction: number;
     received: number; row_count: number; status: ReportRow["status"];
     created_at: string; periods: string[] | null;
     meta: { year: number; month: number | null; quarter: number | null; label: string }[] | null;
   }>(
-    `select r.id, r.title, r.file_name, r.gross::float8, r.deduction::float8,
-            r.received::float8, r.row_count, r.status, r.created_at,
+    `select r.id, r.title, r.file_name,
+            ${grossExpr} gross, ${dedExpr} deduction,
+            ${restricted ? `(${grossExpr} - ${dedExpr})` : `r.received::float8`} received,
+            ${rowExpr} row_count, r.status, r.created_at,
             array_agg(p.label order by p.sort) filter (where p.label is not null) periods,
             coalesce(
               json_agg(json_build_object('year', p.year, 'month', p.month,
@@ -135,10 +194,13 @@ export async function listReports(): Promise<ReportRow[]> {
               '[]'::json
             ) meta
      from reports r
+     ${scoped}
      left join report_periods rp on rp.report_id = r.id
      left join periods p on p.id = rp.period_id
-     group by r.id
-     order by r.created_at desc`
+     ${restricted ? `where sc.g <> 0 and r.status in ('published','locked')` : ""}
+     group by r.id${restricted ? ", sc.g, sc.rc" : ""}
+     order by r.created_at desc`,
+    a.params
   );
   return rows.map((r) => {
     const meta = (r.meta ?? []).filter(Boolean);
@@ -185,7 +247,13 @@ function friendlyRange(meta: { year: number; month: number | null; quarter: numb
 export async function loadResult(scope: Scope = {}): Promise<Result> {
   const w = buildWhere(scope);
   const F = `from credits c join reports r on r.id = c.report_id`;
-  const wr = buildWhere(scope, "rr");
+  const wr = buildWhere({ ...scope, access: undefined }, "rr");
+
+  // report_rows ham satır tablosudur: sanatçı/label kimliği taşımaz, bu yüzden
+  // yetkiye göre süzülemez. Kısıtlı bir kullanıcı için bu sorgular hiç
+  // çalıştırılmaz — rapor geneli satır sayısı ve satış sınıfı dağılımı onun
+  // görmemesi gereken veridir. Karşılıkları credits üzerinden hesaplanır.
+  const restricted = isRestricted(scope.access);
 
   // Tüm sorgular birbirinden bağımsız — paralel çalıştırıyoruz.
   // Sıralı çalıştırıldığında yerelde 1,7 sn sürüyordu; Supabase'e her sorgu
@@ -204,19 +272,24 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
        ${F} ${w.sql} group by r.id, r.deduction, r.gross`, w.params),
 
     query<{ gross: number; quantity: number; artists: number; songs: number;
-            labels: number; territories: number; retailers: number }>(
+            labels: number; territories: number; retailers: number;
+            credits: number; neg_credits: number }>(
       `select coalesce(sum(c.gross),0)::float8 gross,
               coalesce(sum(c.quantity),0)::float8 quantity,
               count(distinct c.artist_id)::int artists,
               count(distinct c.song_id)::int songs,
               count(distinct c.label_id)::int labels,
               count(distinct c.territory)::int territories,
-              count(distinct c.retailer)::int retailers
+              count(distinct c.retailer)::int retailers,
+              count(*)::int credits,
+              count(*) filter (where c.gross < 0)::int neg_credits
        ${F} ${w.sql}`, w.params),
 
-    query<{ c: number; neg: number }>(
-      `select count(*)::int c, count(*) filter (where rr.net < 0)::int neg
-       from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}`, wr.params),
+    restricted
+      ? Promise.resolve([] as { c: number; neg: number }[])
+      : query<{ c: number; neg: number }>(
+          `select count(*)::int c, count(*) filter (where rr.net < 0)::int neg
+           from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}`, wr.params),
 
     query<{ id: string; fold_key: string; display_name: string; spellings: string[];
             gross: number; quantity: number; credits: number; songs: number;
@@ -318,10 +391,12 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
       `select p.label k, sum(c.gross)::float8 v ${F}
        join periods p on p.id = c.period_id ${w.sql} group by p.label`, w.params),
 
-    query<{ k: string; v: number }>(
-      `select rr.sales_class k, sum(rr.net)::float8 v
-       from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}
-       group by rr.sales_class`, wr.params),
+    restricted
+      ? Promise.resolve([] as { k: string; v: number }[])
+      : query<{ k: string; v: number }>(
+          `select rr.sales_class k, sum(rr.net)::float8 v
+           from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}
+           group by rr.sales_class`, wr.params),
 
     // Bir şarkının tüm payları toplandığında satır gelirine eşittir (paylar 1'e tamamlanır).
     query<{ artist_string: string; n: number; gross: number; songs: number; rows: number }>(
@@ -504,13 +579,13 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
       deductionRate: gross !== 0 ? deduction / gross : 0,
       netRate,
       quantity: n(T?.quantity),
-      rowCount: rowCountRow[0]?.c ?? 0,
+      rowCount: rowCountRow[0]?.c ?? T?.credits ?? 0,
       artistCount: T?.artists ?? 0,
       songCount: T?.songs ?? 0,
       labelCount: T?.labels ?? 0,
       territoryCount: T?.territories ?? 0,
       retailerCount: T?.retailers ?? 0,
-      negativeRows: rowCountRow[0]?.neg ?? 0,
+      negativeRows: rowCountRow[0]?.neg ?? T?.neg_credits ?? 0,
     },
   };
 }

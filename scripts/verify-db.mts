@@ -11,7 +11,7 @@ import { readWorkbook, toRows } from "../src/lib/parse";
 import { compute } from "../src/lib/calc";
 import { ingestReport, flattenCredits } from "../src/lib/ingest";
 import { parsePeriod, periodDisplay } from "../src/lib/period";
-import { pool, transaction, n } from "../src/lib/db";
+import { pool, transaction, query, n } from "../src/lib/db";
 import { DEFAULT_CONFIG } from "../src/lib/types";
 
 let pass = 0;
@@ -69,6 +69,10 @@ for (const a of client.artists) {
 check("her sanatçının brütü aynı", maxArtistDev < 1e-9, `azami sapma ${maxArtistDev.toExponential(2)}`);
 
 console.log("\n=== 3. VERİTABANINA YAZMA ===");
+// Temiz başlangıç: bu test toplamları istemci motoruyla karşılaştırıyor,
+// önceki bir testin bıraktığı veri toplamları ikiye katlar.
+await query(`truncate credits, report_rows, report_periods, reports,
+             songs, artists, labels, periods restart identity cascade`);
 const hash = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 32);
 const t0 = Date.now();
 const result = await transaction((c) =>

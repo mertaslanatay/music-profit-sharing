@@ -1,12 +1,31 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listReports, type ReportRow } from "@/lib/queries";
 import { listBalances, type BalanceRow } from "@/lib/payments";
 import { AdminTabs } from "@/components/AdminTabs";
 import { Icon } from "@/components/ui";
+import { getSession, requestMeta } from "@/lib/session";
+import { authConfigured } from "@/lib/supabase/server";
+import { audit, isAdmin } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  // Yönetim ekranı tüm sanatçıların rakamlarını gösterir — yönetici dışında
+  // kimse giremez. Bağlantıyı elle yazan da giremez.
+  if (authConfigured()) {
+    const { viewer, reason } = await getSession();
+    if (!viewer) redirect(reason === "no-session" ? "/giris?devam=/admin" : "/beklemede");
+    if (!isAdmin(viewer)) {
+      const m = await requestMeta();
+      await audit({
+        userId: viewer.userId, action: "admin_page_denied", resource: viewer.email,
+        ip: m.ip, userAgent: m.userAgent, meta: { role: viewer.role },
+      });
+      redirect("/");
+    }
+  }
+
   let reports: ReportRow[] = [];
   let balances: BalanceRow[] = [];
   let error: string | null = null;

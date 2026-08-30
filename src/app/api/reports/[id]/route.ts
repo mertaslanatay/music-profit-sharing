@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
+import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ type Status = "draft" | "published" | "locked";
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
+    const admin = await requireAdmin("report_patch_denied");
     const body = (await req.json()) as { status?: Status; deduction?: number };
 
     const current = await queryOne<{ status: Status; gross: string }>(
@@ -50,12 +52,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const updated = await queryOne(`select * from reports where id = $1`, [id]);
+    await logAction(admin, "report_updated", `report:${id}`, {
+      status: body.status ?? null, deduction: body.deduction ?? null, from: current.status,
+    });
     return NextResponse.json({ ok: true, report: updated });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Bilinmeyen hata" },
-      { status: 500 }
-    );
+    return denyResponse(e);
   }
 }
 
@@ -63,6 +65,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
+    const admin = await requireAdmin("report_delete_denied");
     const current = await queryOne<{ status: Status }>(
       `select status from reports where id = $1`,
       [id]
@@ -76,11 +79,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     }
     // credits ve report_rows cascade ile gider.
     await query(`delete from reports where id = $1`, [id]);
+    await logAction(admin, "report_deleted", `report:${id}`);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Bilinmeyen hata" },
-      { status: 500 }
-    );
+    return denyResponse(e);
   }
 }

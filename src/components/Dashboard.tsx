@@ -8,7 +8,7 @@ import type { PeriodRow, ReportRow } from "@/lib/queries";
 import { exportWorkbook } from "@/lib/export";
 import { money, num, pct } from "@/lib/format";
 
-import { Sidebar, type ViewKey } from "./Sidebar";
+import { Sidebar, type ViewKey, type ViewerBadge } from "./Sidebar";
 import { AnalysisPicker, PayoutPicker } from "./PeriodPicker";
 import { Button, Icon } from "./ui";
 import { Overview } from "./views/Overview";
@@ -35,6 +35,7 @@ export function Dashboard({
   view,
   reportId,
   periodIds,
+  viewer = null,
 }: {
   result: Result;
   periods: PeriodRow[];
@@ -44,6 +45,8 @@ export function Dashboard({
   reportId: string;
   /** Diğer ekranların kapsamı: seçili dönem id'leri (boş = tüm zamanlar) */
   periodIds: string[];
+  /** Oturum açık kullanıcı — auth kurulmadan önce null */
+  viewer?: ViewerBadge | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -96,6 +99,7 @@ export function Dashboard({
         onView={setView}
         onReset={() => router.push("/admin")}
         hideRules
+        viewer={viewer}
       />
 
       <div className="flex-1 flex flex-col min-w-0">

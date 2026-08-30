@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { upsertBank } from "@/lib/payments";
+import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
+/**
+ * Banka bilgisi güncelleme — YALNIZCA yönetici.
+ *
+ * Sanatçı kendi IBAN'ını doğrudan değiştiremez; değişiklik isteği açar ve
+ * yönetici onaylar (bank_change_requests). Bir hesap ele geçirilse bile
+ * para başka bir yere gitmesin diye.
+ */
 export async function PUT(req: Request, ctx: { params: Promise<{ artistId: string }> }) {
   const { artistId } = await ctx.params;
   try {
+    const admin = await requireAdmin("bank_update_denied");
     const b = await req.json();
     const iban = String(b.iban ?? "").replace(/\s+/g, "").toUpperCase();
     // Hafif format kontrolü — IBAN ülke kodu + 2 hane ile başlar.
@@ -22,9 +31,12 @@ export async function PUT(req: Request, ctx: { params: Promise<{ artistId: strin
       currency: b.currency === "TRY" ? "TRY" : "USD",
       note: b.note ?? null,
     });
+    // IBAN'ın tamamı kaydedilmez — son 4 hane kimliklemeye yeter.
+    await logAction(admin, "bank_updated", `artist:${artistId}`, {
+      bank: String(b.bankName ?? ""), ibanSon4: iban.slice(-4), currency: b.currency ?? "USD",
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Bilinmeyen hata" }, { status: 500 });
+    return denyResponse(e);
   }
 }

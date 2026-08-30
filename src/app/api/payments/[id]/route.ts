@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deletePayment } from "@/lib/payments";
+import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
@@ -7,12 +8,11 @@ export const runtime = "nodejs";
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
+    const admin = await requireAdmin("payment_delete_denied");
     await deletePayment(id);
+    await logAction(admin, "payment_deleted", `payment:${id}`);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Bilinmeyen hata" },
-      { status: 500 }
-    );
+    return denyResponse(e);
   }
 }
