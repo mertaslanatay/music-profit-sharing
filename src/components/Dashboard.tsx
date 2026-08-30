@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
-import type { PeriodRow } from "@/lib/queries";
+import type { PeriodRow, ReportRow } from "@/lib/queries";
 import { exportWorkbook } from "@/lib/export";
 import { money, num, pct } from "@/lib/format";
 
 import { Sidebar, type ViewKey } from "./Sidebar";
+import { AnalysisPicker, PayoutPicker } from "./PeriodPicker";
 import { Button, Icon } from "./ui";
 import { Overview } from "./views/Overview";
 import { Payouts } from "./views/Payouts";
@@ -30,43 +31,60 @@ const TITLES: Record<ViewKey, { title: string; sub: string }> = {
 export function Dashboard({
   result,
   periods,
-  selected,
+  reports,
+  view,
+  reportId,
+  periodIds,
 }: {
   result: Result;
   periods: PeriodRow[];
-  /** "all" | "y:2026" | dönem id */
-  selected: string;
+  reports: ReportRow[];
+  view: ViewKey;
+  /** Ödeme Listesi kapsamı: rapor id veya "all" */
+  reportId: string;
+  /** Diğer ekranların kapsamı: seçili dönem id'leri (boş = tüm zamanlar) */
+  periodIds: string[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
-  const [view, setView] = useState<ViewKey>("overview");
+  const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [precise, setPrecise] = useState(false);
   const [artistKey, setArtistKey] = useState<string | null>(null);
+
+  const nav = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(sp.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    const qs = next.toString();
+    startTransition(() => router.push(qs ? `/?${qs}` : "/"));
+  };
+
+  const setView = (v: ViewKey) => {
+    setQuery("");
+    nav({ v: v === "overview" ? null : v });
+  };
 
   const artist = useMemo(
     () => (artistKey ? result.artists.find((a) => a.key === artistKey) ?? null : null),
     [result.artists, artistKey]
   );
 
-  const years = useMemo(
-    () => Array.from(new Set(periods.map((p) => p.year))).sort((a, b) => b - a),
-    [periods]
-  );
-
-  const setScope = (value: string) => {
-    const next = new URLSearchParams(sp.toString());
-    if (value === "all") next.delete("d");
-    else next.set("d", value);
-    router.push(next.toString() ? `/?${next}` : "/");
-  };
-
-  const scopeLabel =
-    selected === "all"
+  const isPayouts = view === "payouts";
+  const scopeLabel = isPayouts
+    ? (reportId === "all"
+        ? "Tüm zamanlar"
+        : (() => {
+            const r = reports.find((x) => x.id === reportId);
+            return r ? `${r.periodRange}${r.periodDisplay ? ` (${r.periodDisplay})` : ""}` : "Ödeme partisi";
+          })())
+    : periodIds.length === 0
       ? "Tüm zamanlar"
-      : selected.startsWith("y:")
-        ? `${selected.slice(2)} yılı`
-        : (periods.find((p) => p.id === selected)?.display ?? "Dönem");
+      : periodIds.length === 1
+        ? (periods.find((p) => p.id === periodIds[0])?.display ?? "1 dönem")
+        : `${periodIds.length} dönem`;
 
   const meta = TITLES[view];
   const t = result.totals;
@@ -75,7 +93,7 @@ export function Dashboard({
     <main className="flex h-screen overflow-hidden">
       <Sidebar
         view={view}
-        onView={(v) => { setView(v); setQuery(""); }}
+        onView={setView}
         onReset={() => router.push("/admin")}
         hideRules
       />
@@ -125,44 +143,28 @@ export function Dashboard({
 
         <div className="flex-1 overflow-y-auto scroll-thin p-6 space-y-4">
           {/* ------------------------------------------------ dönem seçici */}
-          <div className="rounded-xl2 bg-card border border-line shadow-card p-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="w-9 h-9 rounded-xl bg-ink-900/[0.05] flex items-center justify-center">
-                <Icon name="clock" size={17} className="text-ink-700" />
-              </div>
-              <div>
-                <p className="text-[12.5px] font-semibold text-ink-900 leading-tight">Dönem</p>
-                <p className="text-[11px] text-ink-400 leading-tight">{scopeLabel}</p>
-              </div>
-            </div>
+          <div className={`rounded-xl2 bg-card border border-line shadow-card p-4 flex flex-wrap items-center gap-x-6 gap-y-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
+            {isPayouts ? (
+              <PayoutPicker
+                reports={reports}
+                value={reportId}
+                onChange={(v) => nav({ r: v === "all" ? null : v })}
+                pending={pending}
+              />
+            ) : (
+              <AnalysisPicker
+                periods={periods}
+                selected={periodIds}
+                onChange={(ids) => nav({ p: ids.length ? ids.join(",") : null })}
+                pending={pending}
+              />
+            )}
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Pill active={selected === "all"} onClick={() => setScope("all")}>
-                Tüm zamanlar
-              </Pill>
-              {years.map((y) => (
-                <Pill key={y} active={selected === `y:${y}`} onClick={() => setScope(`y:${y}`)}>
-                  {y}
-                </Pill>
-              ))}
-              {periods.slice(0, 6).map((p) => (
-                <Pill key={p.id} active={selected === p.id} onClick={() => setScope(p.id)}>
-                  {p.display}
-                </Pill>
-              ))}
-              {periods.length > 6 && (
-                <select
-                  value={periods.some((p) => p.id === selected) ? selected : ""}
-                  onChange={(e) => e.target.value && setScope(e.target.value)}
-                  className="rounded-full border border-line px-3 py-1.5 text-[12px] bg-white outline-none focus:border-brand-500"
-                >
-                  <option value="">Diğer dönemler…</option>
-                  {periods.map((p) => (
-                    <option key={p.id} value={p.id}>{p.display}</option>
-                  ))}
-                </select>
-              )}
-            </div>
+            {isPayouts && (
+              <p className="text-[11.5px] text-ink-400 max-w-[220px] leading-snug hidden xl:block">
+                Bir ödeme partisi = bankana yatan bir transfer. Excel&apos;deki dönemleri birlikte kapsar.
+              </p>
+            )}
 
             <div className="ml-auto flex items-center gap-4">
               <Field label="Brüt" value={money(t.gross, true)} />
@@ -170,7 +172,12 @@ export function Dashboard({
                 tone={t.deduction ? "rose" : "muted"} />
               <Field label="Kesinti oranı" value={t.deduction ? pct(t.deductionRate, 2) : "—"}
                 tone={t.deduction ? "rose" : "muted"} />
-              <div className="rounded-xl bg-brand-50 px-3.5 py-2">
+              <div className="rounded-xl bg-brand-50 px-3.5 py-2 relative">
+                {pending && (
+                  <span className="absolute inset-0 rounded-xl bg-brand-50 flex items-center justify-center">
+                    <span className="text-[11px] text-brand-700/60">hesaplanıyor…</span>
+                  </span>
+                )}
                 <p className="text-[10.5px] font-medium text-brand-700/70 leading-tight">DAĞITILACAK NET</p>
                 <p className="text-[17px] font-semibold text-brand-700 tabular leading-tight mt-0.5">
                   {money(t.received)}
@@ -189,7 +196,7 @@ export function Dashboard({
             </div>
           )}
 
-          <div className="rise" key={selected}>
+          <div className="rise" key={`${view}-${reportId}-${periodIds.join(",")}`}>
             {view === "overview" && <Overview res={result} precise={precise} onArtist={setArtistKey} />}
             {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={setArtistKey} />}
             {view === "songs" && <Songs res={result} precise={precise} query={query} />}
@@ -214,19 +221,6 @@ export function Dashboard({
         <ArtistPanel artist={artist} res={result} precise={precise} onClose={() => setArtistKey(null)} />
       )}
     </main>
-  );
-}
-
-function Pill({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors whitespace-nowrap ${
-        active ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

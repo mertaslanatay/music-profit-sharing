@@ -110,7 +110,12 @@ export interface ReportRow {
   rowCount: number;
   status: "draft" | "published" | "locked";
   createdAt: string;
+  /** Excel'deki ham dönem etiketleri: ["P03 26(Mar 26)", "P04 26(Apr 26)"] */
   periods: string[];
+  /** Kısa ham etiket: "P03 26 – P04 26" */
+  periodRange: string;
+  /** Okunur ad: "Mart – Nisan 2026" */
+  periodDisplay: string;
 }
 
 export async function listReports(): Promise<ReportRow[]> {
@@ -118,28 +123,61 @@ export async function listReports(): Promise<ReportRow[]> {
     id: string; title: string; file_name: string; gross: number; deduction: number;
     received: number; row_count: number; status: ReportRow["status"];
     created_at: string; periods: string[] | null;
+    meta: { year: number; month: number | null; quarter: number | null; label: string }[] | null;
   }>(
     `select r.id, r.title, r.file_name, r.gross::float8, r.deduction::float8,
             r.received::float8, r.row_count, r.status, r.created_at,
-            array_agg(p.label order by p.sort) filter (where p.label is not null) periods
+            array_agg(p.label order by p.sort) filter (where p.label is not null) periods,
+            coalesce(
+              json_agg(json_build_object('year', p.year, 'month', p.month,
+                                         'quarter', p.quarter, 'label', p.label)
+                       order by p.sort) filter (where p.id is not null),
+              '[]'::json
+            ) meta
      from reports r
      left join report_periods rp on rp.report_id = r.id
      left join periods p on p.id = rp.period_id
      group by r.id
      order by r.created_at desc`
   );
-  return rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    fileName: r.file_name,
-    gross: n(r.gross),
-    deduction: n(r.deduction),
-    received: n(r.received),
-    rowCount: r.row_count,
-    status: r.status,
-    createdAt: r.created_at,
-    periods: r.periods ?? [],
-  }));
+  return rows.map((r) => {
+    const meta = (r.meta ?? []).filter(Boolean);
+    return {
+      id: r.id,
+      title: r.title,
+      fileName: r.file_name,
+      gross: n(r.gross),
+      deduction: n(r.deduction),
+      received: n(r.received),
+      rowCount: r.row_count,
+      status: r.status,
+      createdAt: r.created_at,
+      periods: r.periods ?? [],
+      periodRange: shortRange(r.periods ?? []),
+      periodDisplay: friendlyRange(meta),
+    };
+  });
+}
+
+/** "P03 26(Mar 26)" → "P03 26";  birden fazlaysa "P03 26 – P04 26" */
+function shortRange(labels: string[]): string {
+  const trimmed = labels.map((l) => l.replace(/\s*\(.*\)\s*$/, "").trim()).filter(Boolean);
+  if (trimmed.length === 0) return "—";
+  if (trimmed.length === 1) return trimmed[0];
+  return `${trimmed[0]} – ${trimmed[trimmed.length - 1]}`;
+}
+
+/** Aynı yıl içindeyse "Mart – Nisan 2026", değilse "Aralık 2025 – Ocak 2026" */
+function friendlyRange(meta: { year: number; month: number | null; quarter: number | null; label: string }[]): string {
+  if (meta.length === 0) return "";
+  const sorted = [...meta].sort((a, b) => (a.year * 100 + (a.month ?? 0)) - (b.year * 100 + (b.month ?? 0)));
+  const first = periodDisplay(sorted[0]);
+  if (sorted.length === 1) return first;
+  const last = periodDisplay(sorted[sorted.length - 1]);
+  const fy = sorted[0].year;
+  const ly = sorted[sorted.length - 1].year;
+  if (fy === ly) return `${first.replace(` ${fy}`, "")} – ${last}`;
+  return `${first} – ${last}`;
 }
 
 /* ------------------------------------------------------- ana Result kurulumu */

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { listPeriods, loadResult, type Scope } from "@/lib/queries";
+import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
+import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
 
@@ -11,36 +12,47 @@ export default async function Page({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const raw = typeof sp.d === "string" ? sp.d : "all";
+  const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
 
-  let periods;
+  const VIEWS: ViewKey[] = ["overview", "payouts", "songs", "labels", "geo", "platforms"];
+  const rawView = str("v");
+  const view: ViewKey = VIEWS.includes(rawView as ViewKey) ? (rawView as ViewKey) : "overview";
+
+  let periods, reports;
   try {
-    periods = await listPeriods();
+    [periods, reports] = await Promise.all([listPeriods(), listReports()]);
   } catch (e) {
     return <Fail message={e instanceof Error ? e.message : "Veritabanına bağlanılamadı."} />;
   }
 
-  if (periods.length === 0) {
-    return <NoData />;
-  }
+  if (periods.length === 0) return <NoData />;
 
-  // Kapsamı çöz: "all" | "y:2026" | dönem id
-  let selected = "all";
-  let scope: Scope = {};
-  if (raw.startsWith("y:")) {
-    const year = Number(raw.slice(2));
-    const ids = periods.filter((p) => p.year === year).map((p) => p.id);
-    if (ids.length > 0) {
-      selected = raw;
-      scope = { periodIds: ids };
-    }
-  } else if (raw !== "all" && periods.some((p) => p.id === raw)) {
-    selected = raw;
-    scope = { periodIds: [raw] };
-  }
+  // Ödeme Listesi tek bir ödeme partisine (rapor) bakar; diğer ekranlar
+  // serbest ay/yıl seçimine. İki kapsam URL'de ayrı taşınır ki ekran
+  // değiştirince diğerinin seçimi bozulmasın.
+  const publishedIds = new Set(reports.filter((r) => r.status !== "draft").map((r) => r.id));
+  const rawReport = str("r");
+  const reportId = publishedIds.has(rawReport) ? rawReport : "all";
+
+  const validPeriods = new Set(periods.map((p) => p.id));
+  const periodIds = str("p").split(",").map((x) => x.trim()).filter((x) => validPeriods.has(x));
+
+  const scope: Scope =
+    view === "payouts"
+      ? (reportId === "all" ? {} : { reportId })
+      : (periodIds.length ? { periodIds } : {});
 
   const result = await loadResult(scope);
-  return <Dashboard result={result} periods={periods} selected={selected} />;
+  return (
+    <Dashboard
+      result={result}
+      periods={periods}
+      reports={reports}
+      view={view}
+      reportId={reportId}
+      periodIds={periodIds}
+    />
+  );
 }
 
 function NoData() {
