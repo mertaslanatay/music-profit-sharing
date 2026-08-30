@@ -146,72 +146,167 @@ export async function listReports(): Promise<ReportRow[]> {
 
 export async function loadResult(scope: Scope = {}): Promise<Result> {
   const w = buildWhere(scope);
-  const J = `from credits c join reports r on r.id = c.report_id`;
+  const F = `from credits c join reports r on r.id = c.report_id`;
+  const wr = buildWhere(scope, "rr");
 
-  // --- kesinti tahsisi ---------------------------------------------------
-  // Kesinti rapor bazında. Kapsam bir raporun bir kısmını içeriyorsa
-  // (örn. iki dönemli bir rapordan tek dönem), kesinti de o oranda alınır.
-  const dedRows = await query<{ deduction: number; report_gross: number; included: number }>(
-    `select r.deduction::float8 deduction, r.gross::float8 report_gross,
-            sum(c.gross)::float8 included
-     ${J} ${w.sql}
-     group by r.id, r.deduction, r.gross`,
-    w.params
-  );
+  // Tüm sorgular birbirinden bağımsız — paralel çalıştırıyoruz.
+  // Sıralı çalıştırıldığında yerelde 1,7 sn sürüyordu; Supabase'e her sorgu
+  // ~40 ms gidiş-dönüş eklediği için sıralı hâli kabul edilemezdi.
+  const [
+    dedRows, totalsRow, rowCountRow, aRows,
+    dimTerr, dimRet, dimLabel, dimPeriod,
+    alRows, alTopTerr, alTopRet,
+    asRows, sRows, songTopTerr, songTopRet, spa,
+    lRows, gTerr, gRet, gPeriod, scRows, comboRows, splitRow,
+  ] = await Promise.all([
+    // kesinti tahsisi — kapsam bir raporun bir kısmıysa kesinti de o oranda
+    query<{ deduction: number; report_gross: number; included: number }>(
+      `select r.deduction::float8 deduction, r.gross::float8 report_gross,
+              sum(c.gross)::float8 included
+       ${F} ${w.sql} group by r.id, r.deduction, r.gross`, w.params),
+
+    query<{ gross: number; quantity: number; artists: number; songs: number;
+            labels: number; territories: number; retailers: number }>(
+      `select coalesce(sum(c.gross),0)::float8 gross,
+              coalesce(sum(c.quantity),0)::float8 quantity,
+              count(distinct c.artist_id)::int artists,
+              count(distinct c.song_id)::int songs,
+              count(distinct c.label_id)::int labels,
+              count(distinct c.territory)::int territories,
+              count(distinct c.retailer)::int retailers
+       ${F} ${w.sql}`, w.params),
+
+    query<{ c: number; neg: number }>(
+      `select count(*)::int c, count(*) filter (where rr.net < 0)::int neg
+       from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}`, wr.params),
+
+    query<{ id: string; fold_key: string; display_name: string; spellings: string[];
+            gross: number; quantity: number; credits: number; songs: number;
+            solo: number; primary_g: number; feature: number }>(
+      `select a.id, a.fold_key, a.display_name, a.spellings,
+              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              count(*)::int credits, count(distinct c.song_id)::int songs,
+              sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
+              sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
+              sum(case when c.position > 0 then c.gross else 0 end)::float8 feature
+       ${F} join artists a on a.id = c.artist_id ${w.sql}
+       group by a.id, a.fold_key, a.display_name, a.spellings
+       order by gross desc`, w.params),
+
+    query<{ aid: string; k: string; v: number }>(
+      `select c.artist_id aid, c.territory k, sum(c.gross)::float8 v
+       ${F} ${w.sql} group by c.artist_id, c.territory`, w.params),
+    query<{ aid: string; k: string; v: number }>(
+      `select c.artist_id aid, c.retailer k, sum(c.gross)::float8 v
+       ${F} ${w.sql} group by c.artist_id, c.retailer`, w.params),
+    query<{ aid: string; k: string; v: number }>(
+      `select c.artist_id aid, l.name k, sum(c.gross)::float8 v
+       ${F} join labels l on l.id = c.label_id ${w.sql} group by c.artist_id, l.name`, w.params),
+    query<{ aid: string; k: string; v: number }>(
+      `select c.artist_id aid, p.label k, sum(c.gross)::float8 v
+       ${F} join periods p on p.id = c.period_id ${w.sql} group by c.artist_id, p.label`, w.params),
+
+    query<{ aid: string; label_name: string; gross: number; quantity: number;
+            songs: number; solo: number; primary_g: number; feature: number }>(
+      `select c.artist_id aid, l.name label_name,
+              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              count(distinct c.song_id)::int songs,
+              sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
+              sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
+              sum(case when c.position > 0 then c.gross else 0 end)::float8 feature
+       ${F} join labels l on l.id = c.label_id ${w.sql}
+       group by c.artist_id, l.name`, w.params),
+
+    // Label filtresi açıkken gösterilen "ana ülke/platform" — tam kırılım
+    // 65 bin satır olurdu, sadece en büyüğünü alıyoruz.
+    query<{ aid: string; label_name: string; k: string; v: number }>(
+      `select distinct on (c.artist_id, l.name)
+              c.artist_id aid, l.name label_name, c.territory k, sum(c.gross)::float8 v
+       ${F} join labels l on l.id = c.label_id ${w.sql}
+       group by c.artist_id, l.name, c.territory
+       order by c.artist_id, l.name, sum(c.gross) desc`, w.params),
+    query<{ aid: string; label_name: string; k: string; v: number }>(
+      `select distinct on (c.artist_id, l.name)
+              c.artist_id aid, l.name label_name, c.retailer k, sum(c.gross)::float8 v
+       ${F} join labels l on l.id = c.label_id ${w.sql}
+       group by c.artist_id, l.name, c.retailer
+       order by c.artist_id, l.name, sum(c.gross) desc`, w.params),
+
+    query<{ aid: string; song_key: string; title: string; album: string; artist_string: string;
+            label_name: string; share: number; position: number; total_artists: number;
+            gross: number; quantity: number }>(
+      `select c.artist_id aid, s.song_key, s.title, s.album, s.artist_string, l.name label_name,
+              max(c.share)::float8 share, min(c.position)::int position,
+              max(c.total_artists)::int total_artists,
+              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
+       ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id ${w.sql}
+       group by c.artist_id, s.song_key, s.title, s.album, s.artist_string, l.name
+       order by sum(c.gross) desc`, w.params),
+
+    query<{ song_key: string; title: string; album: string; isrc: string;
+            artist_string: string; label_name: string; gross: number; quantity: number }>(
+      `select s.song_key, s.title, s.album, s.isrc, s.artist_string,
+              (array_agg(l.name order by c.gross desc))[1] label_name,
+              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
+       ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id ${w.sql}
+       group by s.song_key, s.title, s.album, s.isrc, s.artist_string
+       order by gross desc`, w.params),
+
+    query<{ song_key: string; k: string; v: number }>(
+      `select distinct on (s.song_key) s.song_key, c.territory k, sum(c.gross)::float8 v
+       ${F} join songs s on s.id = c.song_id ${w.sql}
+       group by s.song_key, c.territory order by s.song_key, sum(c.gross) desc`, w.params),
+    query<{ song_key: string; k: string; v: number }>(
+      `select distinct on (s.song_key) s.song_key, c.retailer k, sum(c.gross)::float8 v
+       ${F} join songs s on s.id = c.song_id ${w.sql}
+       group by s.song_key, c.retailer order by s.song_key, sum(c.gross) desc`, w.params),
+
+    query<{ song_key: string; names: string[] }>(
+      `select s.song_key, array_agg(distinct a.display_name) names
+       ${F} join songs s on s.id = c.song_id join artists a on a.id = c.artist_id ${w.sql}
+       group by s.song_key`, w.params),
+
+    query<{ label_name: string; gross: number; quantity: number; artists: number; songs: number }>(
+      `select l.name label_name, sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              count(distinct c.artist_id)::int artists, count(distinct c.song_id)::int songs
+       ${F} join labels l on l.id = c.label_id ${w.sql}
+       group by l.name order by gross desc`, w.params),
+
+    query<{ k: string; v: number }>(
+      `select c.territory k, sum(c.gross)::float8 v ${F} ${w.sql} group by c.territory`, w.params),
+    query<{ k: string; v: number }>(
+      `select c.retailer k, sum(c.gross)::float8 v ${F} ${w.sql} group by c.retailer`, w.params),
+    query<{ k: string; v: number }>(
+      `select p.label k, sum(c.gross)::float8 v ${F}
+       join periods p on p.id = c.period_id ${w.sql} group by p.label`, w.params),
+
+    query<{ k: string; v: number }>(
+      `select rr.sales_class k, sum(rr.net)::float8 v
+       from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}
+       group by rr.sales_class`, wr.params),
+
+    // Bir şarkının tüm payları toplandığında satır gelirine eşittir (paylar 1'e tamamlanır).
+    query<{ artist_string: string; n: number; gross: number; songs: number; rows: number }>(
+      `select s.artist_string, max(c.total_artists)::int n, sum(c.gross)::float8 gross,
+              count(distinct c.song_id)::int songs, count(*)::int rows
+       ${F} join songs s on s.id = c.song_id
+       ${w.sql}${w.sql ? " and" : "where"} c.total_artists > 1
+       group by s.artist_string order by gross desc`, w.params),
+
+    query<{ split: EngineConfig["split"] }>(
+      `select split from engine_rules where is_active limit 1`),
+  ]);
+
+  const T = totalsRow[0];
+  const gross = n(T?.gross);
+
   let deduction = 0;
   for (const d of dedRows) {
     const rg = n(d.report_gross);
     deduction += rg !== 0 ? n(d.deduction) * (n(d.included) / rg) : 0;
   }
 
-  // --- genel toplamlar ---------------------------------------------------
-  const totalsRow = await query<{
-    gross: number; quantity: number; artists: number; songs: number;
-    labels: number; territories: number; retailers: number; periods: number;
-  }>(
-    `select coalesce(sum(c.gross),0)::float8 gross,
-            coalesce(sum(c.quantity),0)::float8 quantity,
-            count(distinct c.artist_id)::int artists,
-            count(distinct c.song_id)::int songs,
-            count(distinct c.label_id)::int labels,
-            count(distinct c.territory)::int territories,
-            count(distinct c.retailer)::int retailers,
-            count(distinct c.period_id)::int periods
-     ${J} ${w.sql}`,
-    w.params
-  );
-  const T = totalsRow[0];
-  const gross = n(T?.gross);
-
-  // Ham satır sayısı — credits değil, orijinal Excel satırı
-  const rowCountRow = await query<{ c: number; neg: number }>(
-    `select count(*)::int c, count(*) filter (where rr.net < 0)::int neg
-     from report_rows rr join reports r on r.id = rr.report_id
-     ${buildWhere(scope, "rr").sql}`,
-    buildWhere(scope, "rr").params
-  );
-
-  // --- sanatçı ana toplamları --------------------------------------------
-  const aRows = await query<{
-    id: string; fold_key: string; display_name: string; spellings: string[];
-    gross: number; quantity: number; credits: number; songs: number;
-    solo: number; primary_g: number; feature: number;
-  }>(
-    `select a.id, a.fold_key, a.display_name, a.spellings,
-            sum(c.gross)::float8 gross,
-            sum(c.quantity)::float8 quantity,
-            count(*)::int credits,
-            count(distinct c.song_id)::int songs,
-            sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
-            sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
-            sum(case when c.position > 0 then c.gross else 0 end)::float8 feature
-     ${J} join artists a on a.id = c.artist_id
-     ${w.sql}
-     group by a.id, a.fold_key, a.display_name, a.spellings
-     order by gross desc`,
-    w.params
-  );
-
+  // --- sanatçıları kur -----------------------------------------------------
   const byId = new Map<string, ArtistAgg>();
   const artists: ArtistAgg[] = aRows.map((r) => {
     const a: ArtistAgg = {
@@ -239,206 +334,88 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
     return a;
   });
 
-  // --- sanatçı kırılımları (tek sorguda hepsi) ---------------------------
-  const dims: [string, keyof Pick<ArtistAgg, "territories" | "retailers" | "labels" | "periods">][] = [
-    ["c.territory", "territories"],
-    ["c.retailer", "retailers"],
-    ["l.name", "labels"],
-    ["p.label", "periods"],
-  ];
-  for (const [expr, field] of dims) {
-    const join =
-      field === "labels" ? "join labels l on l.id = c.label_id"
-      : field === "periods" ? "join periods p on p.id = c.period_id"
-      : "";
-    const rows = await query<{ aid: string; k: string; v: number }>(
-      `select c.artist_id aid, ${expr} k, sum(c.gross)::float8 v
-       ${J} ${join} ${w.sql}
-       group by c.artist_id, ${expr}`,
-      w.params
-    );
+  const fill = (rows: { aid: string; k: string; v: number }[],
+                field: "territories" | "retailers" | "labels" | "periods") => {
     for (const r of rows) {
       const a = byId.get(r.aid);
       if (a) a[field][r.k || "—"] = n(r.v);
     }
-  }
+  };
+  fill(dimTerr, "territories");
+  fill(dimRet, "retailers");
+  fill(dimLabel, "labels");
+  fill(dimPeriod, "periods");
 
-  // --- sanatçı × label dilimi (ödeme listesi label filtresi) -------------
-  const alRows = await query<{
-    aid: string; label_name: string; gross: number; quantity: number;
-    songs: number; solo: number; primary_g: number; feature: number;
-  }>(
-    `select c.artist_id aid, l.name label_name,
-            sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
-            count(distinct c.song_id)::int songs,
-            sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
-            sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
-            sum(case when c.position > 0 then c.gross else 0 end)::float8 feature
-     ${J} join labels l on l.id = c.label_id ${w.sql}
-     group by c.artist_id, l.name`,
-    w.params
-  );
   for (const r of alRows) {
     const a = byId.get(r.aid);
     if (!a) continue;
-    const slice: ArtistLabelSlice = {
-      gross: n(r.gross),
-      quantity: n(r.quantity),
-      songCount: r.songs,
-      soloGross: n(r.solo),
-      primaryGross: n(r.primary_g),
-      featureGross: n(r.feature),
-      territories: {},
-      retailers: {},
+    a.labelBreakdown[r.label_name] = {
+      gross: n(r.gross), quantity: n(r.quantity), songCount: r.songs,
+      soloGross: n(r.solo), primaryGross: n(r.primary_g), featureGross: n(r.feature),
+      territories: {}, retailers: {},
     };
-    a.labelBreakdown[r.label_name] = slice;
   }
-
-  // Label filtresi açıkken tabloda gösterilen "ana ülke / platform" için
-  // sanatçı × label başına yalnızca en büyüğü çekiyoruz — tam kırılım
-  // 65 bin satır olurdu, gereksiz.
-  for (const [expr, field] of [["territory", "territories"], ["retailer", "retailers"]] as const) {
-    const rows = await query<{ aid: string; label_name: string; k: string; v: number }>(
-      `select distinct on (c.artist_id, l.name)
-              c.artist_id aid, l.name label_name, c.${expr} k, sum(c.gross)::float8 v
-       ${J} join labels l on l.id = c.label_id ${w.sql}
-       group by c.artist_id, l.name, c.${expr}
-       order by c.artist_id, l.name, sum(c.gross) desc`,
-      w.params
-    );
+  for (const [rows, field] of [[alTopTerr, "territories"], [alTopRet, "retailers"]] as const) {
     for (const r of rows) {
       const slice = byId.get(r.aid)?.labelBreakdown[r.label_name];
       if (slice) slice[field][r.k || "—"] = n(r.v);
     }
   }
 
-  // --- sanatçı × şarkı (detay paneli) ------------------------------------
-  const asRows = await query<{
-    aid: string; song_key: string; title: string; album: string; artist_string: string;
-    label_name: string; share: number; position: number; total_artists: number;
-    gross: number; quantity: number;
-  }>(
-    `select c.artist_id aid, s.song_key, s.title, s.album, s.artist_string,
-            l.name label_name,
-            max(c.share)::float8 share, min(c.position)::int position,
-            max(c.total_artists)::int total_artists,
-            sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
-     ${J} join songs s on s.id = c.song_id join labels l on l.id = c.label_id
-     ${w.sql}
-     group by c.artist_id, s.song_key, s.title, s.album, s.artist_string, l.name
-     order by sum(c.gross) desc`,
-    w.params
-  );
   for (const r of asRows) {
-    const a = byId.get(r.aid);
-    if (!a) continue;
-    a.songs.push({
-      songKey: r.song_key,
-      song: r.title,
-      album: r.album,
-      artistString: r.artist_string,
-      label: r.label_name,
-      share: n(r.share),
-      position: r.position,
-      totalArtists: r.total_artists,
-      gross: n(r.gross),
-      quantity: n(r.quantity),
+    byId.get(r.aid)?.songs.push({
+      songKey: r.song_key, song: r.title, album: r.album, artistString: r.artist_string,
+      label: r.label_name, share: n(r.share), position: r.position,
+      totalArtists: r.total_artists, gross: n(r.gross), quantity: n(r.quantity),
     });
   }
 
-  // --- birlikte çalışılan sanatçılar (ortak şarkılar üzerinden) ----------
-  const coRows = await query<{ aid: string; other: string; v: number }>(
-    `select c.artist_id aid, a2.display_name other, sum(c.gross)::float8 v
-     ${J}
-     join credits c2 on c2.song_id = c.song_id and c2.report_id = c.report_id
-                    and c2.artist_id <> c.artist_id
-     join artists a2 on a2.id = c2.artist_id
-     ${w.sql}
-     group by c.artist_id, a2.display_name`,
-    w.params
-  );
-  for (const r of coRows) {
-    const a = byId.get(r.aid);
-    if (a) a.collaborators[r.other] = n(r.v);
+  // --- birlikte çalışılan sanatçılar ---------------------------------------
+  // SQL'de credits'i kendisiyle birleştirmek 1,4 saniye sürüyordu (20 bin × 20 bin).
+  // Aynı sonucu zaten çektiğimiz sanatçı×şarkı ve şarkı×sanatçı verisinden
+  // bellekte kuruyoruz — ek sorgu yok, ölçülebilir maliyeti sıfır.
+  const songArtists = new Map<string, string[]>();
+  for (const r of spa) songArtists.set(r.song_key, r.names ?? []);
+  for (const a of artists) {
+    for (const sc of a.songs) {
+      if (sc.totalArtists < 2) continue;
+      for (const other of songArtists.get(sc.songKey) ?? []) {
+        if (other === a.name) continue;
+        a.collaborators[other] = (a.collaborators[other] ?? 0) + sc.gross;
+      }
+    }
   }
 
-  // --- pro-rata kesinti ---------------------------------------------------
+  // --- pro-rata kesinti ----------------------------------------------------
   const received = gross - deduction;
   const netRate = gross !== 0 ? received / gross : 1;
   applyProRata(artists, netRate, received);
 
-  // --- şarkılar -----------------------------------------------------------
-  const sRows = await query<{
-    song_key: string; title: string; album: string; isrc: string; artist_string: string;
-    label_name: string; gross: number; quantity: number;
-  }>(
-    `select s.song_key, s.title, s.album, s.isrc, s.artist_string,
-            (array_agg(l.name order by c.gross desc))[1] label_name,
-            sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
-     ${J} join songs s on s.id = c.song_id join labels l on l.id = c.label_id
-     ${w.sql}
-     group by s.song_key, s.title, s.album, s.isrc, s.artist_string
-     order by gross desc`,
-    w.params
-  );
-  // şarkı × ülke / platform — yalnızca en büyüğü (tablo tek değer gösteriyor)
+  // --- şarkılar ------------------------------------------------------------
   const songTop = new Map<string, { t: Tally; r: Tally }>();
-  for (const [expr, key] of [["territory", "t"], ["retailer", "r"]] as const) {
-    const rows = await query<{ song_key: string; k: string; v: number }>(
-      `select distinct on (s.song_key) s.song_key, c.${expr} k, sum(c.gross)::float8 v
-       ${J} join songs s on s.id = c.song_id ${w.sql}
-       group by s.song_key, c.${expr}
-       order by s.song_key, sum(c.gross) desc`,
-      w.params
-    );
+  const put = (rows: { song_key: string; k: string; v: number }[], key: "t" | "r") => {
     for (const r of rows) {
       let e = songTop.get(r.song_key);
       if (!e) { e = { t: {}, r: {} }; songTop.set(r.song_key, e); }
       e[key][r.k || "—"] = n(r.v);
     }
-  }
+  };
+  put(songTopTerr, "t");
+  put(songTopRet, "r");
+
   const songs: SongAgg[] = sRows.map((r) => {
     const top = songTop.get(r.song_key);
     return {
-      key: r.song_key,
-      song: r.title,
-      album: r.album,
-      isrc: r.isrc,
-      label: r.label_name,
-      artistString: r.artist_string,
-      primaryArtist: r.artist_string.split(/[,]/)[0]?.trim() ?? r.artist_string,
-      artists: [],
-      gross: n(r.gross),
-      quantity: n(r.quantity),
-      territories: top?.t ?? {},
-      retailers: top?.r ?? {},
+      key: r.song_key, song: r.title, album: r.album, isrc: r.isrc,
+      label: r.label_name, artistString: r.artist_string,
+      primaryArtist: r.artist_string.split(",")[0]?.trim() ?? r.artist_string,
+      artists: songArtists.get(r.song_key) ?? [],
+      gross: n(r.gross), quantity: n(r.quantity),
+      territories: top?.t ?? {}, retailers: top?.r ?? {},
     };
   });
-  // şarkı başına sanatçı sayısı
-  const spa = await query<{ song_key: string; cnt: number; names: string[] }>(
-    `select s.song_key, max(c.total_artists)::int cnt,
-            array_agg(distinct a.display_name) names
-     ${J} join songs s on s.id = c.song_id join artists a on a.id = c.artist_id
-     ${w.sql} group by s.song_key`,
-    w.params
-  );
-  const spaMap = new Map(spa.map((r) => [r.song_key, r]));
-  for (const s of songs) {
-    const e = spaMap.get(s.key);
-    if (e) s.artists = e.names ?? [];
-  }
 
-  // --- label'lar ----------------------------------------------------------
-  const lRows = await query<{
-    label_name: string; gross: number; quantity: number;
-    artists: number; songs: number;
-  }>(
-    `select l.name label_name, sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
-            count(distinct c.artist_id)::int artists, count(distinct c.song_id)::int songs
-     ${J} join labels l on l.id = c.label_id ${w.sql}
-     group by l.name order by gross desc`,
-    w.params
-  );
+  // --- label'lar -----------------------------------------------------------
   const topByLabel = new Map<string, { name: string; gross: number }[]>();
   for (const r of alRows) {
     const a = byId.get(r.aid);
@@ -457,43 +434,8 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
     topArtists: (topByLabel.get(r.label_name) ?? []).sort((a, b) => b.gross - a.gross),
   }));
 
-  // --- global tallies ------------------------------------------------------
-  const globalTally = async (expr: string, join = "") =>
-    tally(
-      await query<{ k: string; v: number }>(
-        `select ${expr} k, sum(c.gross)::float8 v ${J} ${join} ${w.sql} group by ${expr}`,
-        w.params
-      )
-    );
-  const territories = await globalTally("c.territory");
-  const retailers = await globalTally("c.retailer");
-  const periods = await globalTally("p.label", "join periods p on p.id = c.period_id");
-
-  const scRows = await query<{ k: string; v: number }>(
-    `select rr.sales_class k, sum(rr.net)::float8 v
-     from report_rows rr join reports r on r.id = rr.report_id
-     ${buildWhere(scope, "rr").sql} group by rr.sales_class`,
-    buildWhere(scope, "rr").params
-  );
-
-  // --- ortak yapımlar (bölüşüm özeti kartı) -------------------------------
-  // Bir şarkının tüm payları toplandığında satır gelirine eşit olur, çünkü
-  // paylar 1'e tamamlanır. Bu yüzden sum(gross) doğrudan yapım gelirini verir.
-  const splitRow = await query<{ split: EngineConfig["split"] }>(
-    `select split from engine_rules where is_active limit 1`
-  );
+  // --- ortak yapımlar ------------------------------------------------------
   const activeSplit = { ...DEFAULT_SPLIT, ...(splitRow[0]?.split ?? {}) };
-  const comboRows = await query<{
-    artist_string: string; n: number; gross: number; songs: number; rows: number;
-  }>(
-    `select s.artist_string, max(c.total_artists)::int n, sum(c.gross)::float8 gross,
-            count(distinct c.song_id)::int songs, count(*)::int rows
-     ${J} join songs s on s.id = c.song_id
-     ${w.sql}${w.sql ? " and" : "where"} c.total_artists > 1
-     group by s.artist_string
-     order by gross desc`,
-    w.params
-  );
   const combos: ComboAgg[] = comboRows.map((r) => {
     const parts = splitArtists(r.artist_string, activeSplit);
     return {
@@ -512,11 +454,11 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
     songs,
     labels,
     combos,
-    territories,
-    retailers,
-    periods,
+    territories: tally(gTerr),
+    retailers: tally(gRet),
+    periods: tally(gPeriod),
     salesClasses: tally(scRows),
-    aliasSuggestions: [],  // kural ekranı için; admin tarafında ayrı yüklenir
+    aliasSuggestions: [],
     totals: {
       gross,
       received,
