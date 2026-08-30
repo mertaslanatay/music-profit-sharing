@@ -4,25 +4,38 @@ import { useState } from "react";
 import clsx from "clsx";
 import type { ReportRow } from "@/lib/queries";
 import type { BalanceRow } from "@/lib/payments";
+import type { UserListRow } from "@/app/api/admin/users/route";
 import { AdminPanel } from "./AdminPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
+import { UsersPanel } from "./UsersPanel";
 import { Icon } from "./ui";
 
-type Tab = "reports" | "payments";
+type Tab = "reports" | "payments" | "users";
+
+interface LabelOption { id: string; name: string }
+interface ArtistOption { id: string; name: string }
 
 export function AdminTabs({
   reports,
   balances,
+  users,
+  labels,
+  artists,
 }: {
   reports: ReportRow[];
   balances: BalanceRow[];
+  users: UserListRow[];
+  labels: LabelOption[];
+  artists: ArtistOption[];
 }) {
   const [tab, setTab] = useState<Tab>("reports");
   const openRequests = balances.filter((b) => b.hasOpenRequest).length;
+  const pendingUsers = users.filter((u) => u.status === "pending").length;
 
   const tabs: { key: Tab; label: string; icon: string; badge?: number }[] = [
     { key: "reports", label: "Raporlar", icon: "file" },
     { key: "payments", label: "Ödemeler ve Banka", icon: "wallet", badge: openRequests },
+    { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
   ];
 
   return (
@@ -55,6 +68,7 @@ export function AdminTabs({
 
       {tab === "reports" && <AdminPanel initialReports={reports} />}
       {tab === "payments" && <PaymentsPanel initial={balances} />}
+      {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
     </div>
   );
 }

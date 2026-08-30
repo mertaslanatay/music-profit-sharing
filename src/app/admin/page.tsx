@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { listReports, type ReportRow } from "@/lib/queries";
 import { listBalances, type BalanceRow } from "@/lib/payments";
 import { AdminTabs } from "@/components/AdminTabs";
+import type { UserListRow } from "@/app/api/admin/users/route";
 import { Icon } from "@/components/ui";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
 import { audit, isAdmin } from "@/lib/access";
+import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,49 @@ export default async function AdminPage() {
 
   let reports: ReportRow[] = [];
   let balances: BalanceRow[] = [];
+  let users: UserListRow[] = [];
+  let labels: { id: string; name: string }[] = [];
+  let artists: { id: string; name: string }[] = [];
   let error: string | null = null;
+
   try {
-    [reports, balances] = await Promise.all([listReports(), listBalances()]);
+    const [rep, bal, userRows, labelRows, artistRows] = await Promise.all([
+      listReports(),
+      listBalances(),
+      query<{
+        id: string; email: string; first_name: string; last_name: string;
+        artist_name: string | null; role: string; status: string; status_note: string | null;
+        can_see_label_totals: boolean; can_see_other_artists: boolean;
+        created_at: string; approved_at: string | null; last_seen_at: string | null;
+        label_ids: string[]; artist_ids: string[];
+      }>(`select * from v_user_access order by
+            case status when 'pending' then 0 when 'active' then 1 else 2 end,
+            created_at desc`),
+      query<{ id: string; name: string }>(`select id, name from labels order by name`),
+      query<{ id: string; display_name: string }>(`select id, display_name from artists order by display_name`),
+    ]);
+
+    reports = rep;
+    balances = bal;
+    users = userRows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      artistName: r.artist_name,
+      role: r.role,
+      status: r.status,
+      statusNote: r.status_note,
+      canSeeLabelTotals: r.can_see_label_totals,
+      canSeeOtherArtists: r.can_see_other_artists,
+      createdAt: r.created_at,
+      approvedAt: r.approved_at,
+      lastSeenAt: r.last_seen_at,
+      labelIds: r.label_ids ?? [],
+      artistIds: r.artist_ids ?? [],
+    }));
+    labels = labelRows;
+    artists = artistRows.map((a) => ({ id: a.id, name: a.display_name }));
   } catch (e) {
     error = e instanceof Error ? e.message : "Veritabanına bağlanılamadı.";
   }
@@ -45,7 +87,7 @@ export default async function AdminPage() {
           </div>
           <div>
             <h1 className="text-[16px] font-semibold text-ink-900 leading-tight">Yönetim</h1>
-            <p className="text-[11.5px] text-ink-400 leading-tight">Rapor, ödeme ve banka yönetimi</p>
+            <p className="text-[11.5px] text-ink-400 leading-tight">Rapor, ödeme, banka ve kullanıcı yönetimi</p>
           </div>
         </div>
         <Link
@@ -74,7 +116,13 @@ export default async function AdminPage() {
             </div>
           </div>
         ) : (
-          <AdminTabs reports={reports} balances={balances} />
+          <AdminTabs
+            reports={reports}
+            balances={balances}
+            users={users}
+            labels={labels}
+            artists={artists}
+          />
         )}
       </div>
     </main>
