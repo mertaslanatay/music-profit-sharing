@@ -106,9 +106,23 @@ export interface ArtistAgg {
   territories: Tally;
   retailers: Tally;
   labels: Tally;
+  /** her label için sanatçının o labeldan gelen kırılımı (ödeme listesi label filtresi) */
+  labelBreakdown: Record<string, ArtistLabelSlice>;
   periods: Tally;
   songs: SongCredit[];
   collaborators: Tally;
+}
+
+/** Bir sanatçının tek bir label altındaki kırılımı. net = gross × netRate ile türetilir. */
+export interface ArtistLabelSlice {
+  gross: number;
+  quantity: number;
+  songCount: number;
+  soloGross: number;
+  primaryGross: number;
+  featureGross: number;
+  territories: Tally;
+  retailers: Tally;
 }
 
 export interface SongCredit {

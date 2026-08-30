@@ -183,6 +183,32 @@ const agBefore = res0.artists.find((a) => a.name === "Ağaçkakan")!.gross;
 const agAfter = aliased.artists.find((a) => a.name === "Ağaçkakan")!.gross;
 console.log(`  Ağaçkakan: $${agBefore.toFixed(4)} → $${agAfter.toFixed(4)}`);
 
+console.log("\n=== 9b. SANATÇI BAZINDA LABEL KIRILIMI ===");
+// Her sanatçının label dilimlerinin toplamı, sanatçının brütüne eşit olmalı.
+let maxBreakDev = 0;
+for (const a of res0.artists) {
+  const sum = Object.values(a.labelBreakdown).reduce((s, sl) => s + sl.gross, 0);
+  maxBreakDev = Math.max(maxBreakDev, Math.abs(sum - a.gross));
+}
+check("Σ(sanatçı label dilimleri) == sanatçı brütü", maxBreakDev < 1e-9, `azami sapma ${maxBreakDev.toExponential(2)}`);
+
+// Bir label için tüm sanatçıların o labeldaki dilimleri, label brütüne eşit olmalı.
+for (const lab of res0.labels) {
+  const sum = res0.artists.reduce((s, a) => s + (a.labelBreakdown[lab.label]?.gross ?? 0), 0);
+  check(`"${lab.label}" dilim toplamı == label brütü`, Math.abs(sum - lab.gross) < 1e-9, `$${sum.toFixed(4)} == $${lab.gross.toFixed(4)}`);
+}
+
+// Çiğ iki labelda da var (M4NM + Black Pigeon). Label kapsamı toplamdan FARKLI olmalı.
+const cigMulti = res0.artists.find((a) => a.name === "Çiğ")!;
+const cigLabels = Object.keys(cigMulti.labelBreakdown);
+console.log(`  Çiğ ${cigLabels.length} labelda: ${cigLabels.join(", ")}`);
+for (const [lab, sl] of Object.entries(cigMulti.labelBreakdown)) {
+  console.log(`    ${lab.padEnd(24)} $${sl.gross.toFixed(4)}`);
+}
+check("Çiğ birden fazla labelda", cigLabels.length >= 2, `${cigLabels.length} label`);
+const cigM4NM = cigMulti.labelBreakdown["M4NM"]?.gross ?? 0;
+check("Çiğ M4NM dilimi toplamdan küçük (filtre çalışıyor)", cigM4NM < cigMulti.gross - 1e-9, `M4NM $${cigM4NM.toFixed(4)} < toplam $${cigMulti.gross.toFixed(4)}`);
+
 console.log("\n=== 10. LABEL KIRILIMI ===");
 for (const l of res0.labels) {
   console.log(`  ${l.label.padEnd(24)} $${l.gross.toFixed(4).padStart(10)}  ${l.artistCount} sanatçı  ${l.songCount} şarkı  top: ${l.topArtists.slice(0, 3).map((a) => a.name).join(", ")}`);
