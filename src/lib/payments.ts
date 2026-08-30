@@ -58,6 +58,27 @@ export interface PaymentRow {
 
 /* ----------------------------------------------------------- banka bilgisi */
 
+export async function getBankAccount(artistId: string): Promise<BankAccount | null> {
+  const r = await queryOne<{
+    account_holder: string; bank_name: string; iban: string;
+    currency: "USD" | "TRY"; note: string | null; updated_at: string | null;
+  }>(
+    `select account_holder, bank_name, iban, currency, note, updated_at
+     from artist_bank_accounts where artist_id = $1`,
+    [artistId]
+  );
+  if (!r) return null;
+  return {
+    artistId,
+    accountHolder: r.account_holder,
+    bankName: r.bank_name,
+    iban: r.iban,
+    currency: r.currency,
+    note: r.note,
+    updatedAt: r.updated_at,
+  };
+}
+
 export async function upsertBank(
   artistId: string,
   d: Partial<Omit<BankAccount, "artistId" | "updatedAt">>
@@ -146,12 +167,30 @@ export async function listBalances(): Promise<BalanceRow[]> {
 
 /* ----------------------------------------------- tek sanatçının cari hesabı */
 
+export interface LedgerSummary {
+  earned: number;
+  paid: number;
+  balance: number;
+  hasOpenRequest: boolean;
+  openRequestAt: string | null;
+}
+
 export async function getArtistLedger(artistId: string): Promise<{
+  summary: LedgerSummary;
   periods: PeriodStatus[];
   payments: PaymentRow[];
 } | null> {
   const exists = await queryOne(`select 1 from artists where id = $1`, [artistId]);
   if (!exists) return null;
+
+  const bal = await queryOne<{
+    earned: number; paid: number; balance: number;
+    open_request_id: string | null; open_request_at: string | null;
+  }>(
+    `select earned::float8, paid::float8, balance::float8, open_request_id, open_request_at
+     from v_artist_balance where artist_id = $1`,
+    [artistId]
+  );
 
   const [pRows, payRows] = await Promise.all([
     query<{
@@ -195,6 +234,13 @@ export async function getArtistLedger(artistId: string): Promise<{
   ]);
 
   return {
+    summary: {
+      earned: n(bal?.earned),
+      paid: n(bal?.paid),
+      balance: n(bal?.balance),
+      hasOpenRequest: !!bal?.open_request_id,
+      openRequestAt: bal?.open_request_at ?? null,
+    },
     periods: pRows.map((r) => ({
       periodId: r.period_id,
       label: r.label,
@@ -411,4 +457,184 @@ export async function setRequestStatus(
      where id = $1`,
     [id, status, adminNote ?? null]
   );
+}
+
+/* ------------------------------------------- banka değişiklik istekleri */
+//
+// Sanatçı kendi IBAN'ını doğrudan değiştiremez (bkz. src/app/api/bank/[artistId]/route.ts
+// üstündeki not). Değişiklik isteği açar, admin onaylayana kadar eski bilgi geçerli kalır.
+
+export interface BankChangeRequestRow {
+  id: string;
+  artistId: string;
+  artistName: string;
+  accountHolder: string;
+  bankName: string;
+  iban: string;
+  currency: "USD" | "TRY";
+  note: string | null;
+  status: "pending" | "approved" | "rejected";
+  adminNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  /** Bu istek onaylanırsa, o anda geçerli olan (eski) bilgi — karşılaştırma için */
+  current: BankAccount | null;
+}
+
+function mapBankChangeRequest(r: {
+  id: string; artist_id: string; artist_name: string; account_holder: string;
+  bank_name: string; iban: string; currency: "USD" | "TRY"; note: string | null;
+  status: "pending" | "approved" | "rejected"; admin_note: string | null;
+  created_at: string; resolved_at: string | null;
+  cur_holder: string | null; cur_bank: string | null; cur_iban: string | null;
+  cur_currency: "USD" | "TRY" | null; cur_note: string | null; cur_updated: string | null;
+}): BankChangeRequestRow {
+  return {
+    id: r.id,
+    artistId: r.artist_id,
+    artistName: r.artist_name,
+    accountHolder: r.account_holder,
+    bankName: r.bank_name,
+    iban: r.iban,
+    currency: r.currency,
+    note: r.note,
+    status: r.status,
+    adminNote: r.admin_note,
+    createdAt: r.created_at,
+    resolvedAt: r.resolved_at,
+    current: r.cur_iban !== null || r.cur_bank !== null || r.cur_holder !== null
+      ? {
+          artistId: r.artist_id,
+          accountHolder: r.cur_holder ?? "",
+          bankName: r.cur_bank ?? "",
+          iban: r.cur_iban ?? "",
+          currency: r.cur_currency ?? "USD",
+          note: r.cur_note,
+          updatedAt: r.cur_updated,
+        }
+      : null,
+  };
+}
+
+const BANK_CHANGE_SELECT = `
+  select q.id, q.artist_id, a.display_name artist_name, q.account_holder, q.bank_name,
+         q.iban, q.currency, q.note, q.status, q.admin_note, q.created_at, q.resolved_at,
+         k.account_holder cur_holder, k.bank_name cur_bank, k.iban cur_iban,
+         k.currency cur_currency, k.note cur_note, k.updated_at cur_updated
+  from bank_change_requests q
+  join artists a on a.id = q.artist_id
+  left join artist_bank_accounts k on k.artist_id = q.artist_id`;
+
+/** Sanatçının bekleyen bir banka değişikliği isteği var mı? */
+export async function getOpenBankChangeRequest(artistId: string): Promise<BankChangeRequestRow | null> {
+  const r = await queryOne(
+    `${BANK_CHANGE_SELECT} where q.artist_id = $1 and q.status = 'pending' order by q.created_at desc limit 1`,
+    [artistId]
+  );
+  return r ? mapBankChangeRequest(r as Parameters<typeof mapBankChangeRequest>[0]) : null;
+}
+
+/** Bir sanatçının banka değişiklik istek geçmişi (en yeni önce). */
+export async function listBankChangeRequestsForArtist(artistId: string): Promise<BankChangeRequestRow[]> {
+  const rows = await query(
+    `${BANK_CHANGE_SELECT} where q.artist_id = $1 order by q.created_at desc`,
+    [artistId]
+  );
+  return rows.map((r) => mapBankChangeRequest(r as Parameters<typeof mapBankChangeRequest>[0]));
+}
+
+/** Admin için: tüm istekler (varsayılan yalnızca bekleyenler). */
+export async function listBankChangeRequests(
+  status?: BankChangeRequestRow["status"]
+): Promise<BankChangeRequestRow[]> {
+  const rows = await query(
+    `${BANK_CHANGE_SELECT} ${status ? "where q.status = $1" : ""} order by q.created_at desc`,
+    status ? [status] : []
+  );
+  return rows.map((r) => mapBankChangeRequest(r as Parameters<typeof mapBankChangeRequest>[0]));
+}
+
+export interface CreateBankChangeInput {
+  artistId: string;
+  requestedBy: string | null;
+  accountHolder: string;
+  bankName: string;
+  iban: string;
+  currency: "USD" | "TRY";
+  note?: string | null;
+}
+
+export async function createBankChangeRequest(
+  input: CreateBankChangeInput
+): Promise<{ id: string } | { error: string }> {
+  const iban = input.iban.replace(/\s+/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) {
+    return { error: "IBAN biçimi geçersiz görünüyor. Örnek: TR33 0006 1005 1978 6457 8413 26" };
+  }
+  if (!input.accountHolder.trim() || !input.bankName.trim()) {
+    return { error: "Hesap sahibi ve banka adı boş bırakılamaz." };
+  }
+
+  const open = await queryOne(
+    `select 1 from bank_change_requests where artist_id = $1 and status = 'pending'`,
+    [input.artistId]
+  );
+  if (open) return { error: "Zaten bekleyen bir banka değişikliği isteğin var." };
+
+  const r = await queryOne<{ id: string }>(
+    `insert into bank_change_requests
+       (artist_id, requested_by, account_holder, bank_name, iban, currency, note)
+     values ($1,$2,$3,$4,$5,$6,$7)
+     returning id`,
+    [
+      input.artistId, input.requestedBy, input.accountHolder.trim(),
+      input.bankName.trim(), iban, input.currency, input.note ?? null,
+    ]
+  );
+  return { id: r!.id };
+}
+
+/** Admin onaylar/reddeder. Onayda güncel banka bilgisi hemen değişir. */
+export async function resolveBankChangeRequest(
+  id: string,
+  action: "approve" | "reject",
+  resolvedBy: string | null,
+  adminNote?: string | null
+): Promise<{ ok: true } | { error: string }> {
+  return transaction(async (c) => {
+    const req = await c.query<{
+      id: string; artist_id: string; account_holder: string; bank_name: string;
+      iban: string; currency: "USD" | "TRY"; status: string;
+    }>(
+      `select id, artist_id, account_holder, bank_name, iban, currency, status
+       from bank_change_requests where id = $1 for update`,
+      [id]
+    );
+    const row = req.rows[0];
+    if (!row) return { error: "İstek bulunamadı." };
+    if (row.status !== "pending") return { error: "Bu istek zaten sonuçlanmış." };
+
+    if (action === "approve") {
+      await c.query(
+        `insert into artist_bank_accounts (artist_id, account_holder, bank_name, iban, currency, note, updated_at)
+         values ($1,$2,$3,$4,$5, null, now())
+         on conflict (artist_id) do update set
+           account_holder = excluded.account_holder,
+           bank_name      = excluded.bank_name,
+           iban           = excluded.iban,
+           currency       = excluded.currency,
+           updated_at     = now()`,
+        [row.artist_id, row.account_holder, row.bank_name, row.iban, row.currency]
+      );
+    }
+
+    await c.query(
+      `update bank_change_requests
+       set status = $2, admin_note = $3, resolved_at = now(), resolved_by = $4
+       where id = $1`,
+      [id, action === "approve" ? "approved" : "rejected", adminNote ?? null, resolvedBy]
+    );
+
+    return { ok: true };
+  });
 }

@@ -1,8 +1,23 @@
 import { NextResponse } from "next/server";
-import { upsertBank } from "@/lib/payments";
-import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { upsertBank, getBankAccount, getOpenBankChangeRequest } from "@/lib/payments";
+import { requireAdmin, requireArtistAccess, denyResponse, logAction } from "@/lib/guard";
 
 export const runtime = "nodejs";
+
+/** Banka bilgisi görüntüleme — sanatçı kendisininkini, admin herkesinkini görür. */
+export async function GET(_req: Request, ctx: { params: Promise<{ artistId: string }> }) {
+  const { artistId } = await ctx.params;
+  try {
+    await requireArtistAccess(artistId);
+    const [bank, openRequest] = await Promise.all([
+      getBankAccount(artistId),
+      getOpenBankChangeRequest(artistId),
+    ]);
+    return NextResponse.json({ bank, openRequest });
+  } catch (e) {
+    return denyResponse(e);
+  }
+}
 
 /**
  * Banka bilgisi güncelleme — YALNIZCA yönetici.

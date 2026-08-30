@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import Link from "next/link";
 import { Icon } from "./ui";
 import { LogoutButton } from "./auth/LogoutButton";
 
@@ -114,6 +115,16 @@ export function Sidebar({
             <span className="flex-1 text-left">Yönetim</span>
             <Icon name="back" size={13} className="rotate-180 opacity-50" />
           </button>
+        )}
+
+        {viewer?.role === "artist" && (
+          <Link
+            href="/hesabim"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+          >
+            <Icon name="wallet" size={16} />
+            <span className="flex-1 text-left">Hesabım</span>
+          </Link>
         )}
 
         {viewer && (

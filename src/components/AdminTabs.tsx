@@ -8,9 +8,10 @@ import type { UserListRow } from "@/app/api/admin/users/route";
 import { AdminPanel } from "./AdminPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { UsersPanel } from "./UsersPanel";
+import { AuditPanel } from "./AuditPanel";
 import { Icon } from "./ui";
 
-type Tab = "reports" | "payments" | "users";
+type Tab = "reports" | "payments" | "users" | "audit";
 
 interface LabelOption { id: string; name: string }
 interface ArtistOption { id: string; name: string }
@@ -36,6 +37,7 @@ export function AdminTabs({
     { key: "reports", label: "Raporlar", icon: "file" },
     { key: "payments", label: "Ödemeler ve Banka", icon: "wallet", badge: openRequests },
     { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
+    { key: "audit", label: "Denetim", icon: "clock" },
   ];
 
   return (
@@ -69,6 +71,7 @@ export function AdminTabs({
       {tab === "reports" && <AdminPanel initialReports={reports} />}
       {tab === "payments" && <PaymentsPanel initial={balances} />}
       {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
+      {tab === "audit" && <AuditPanel />}
     </div>
   );
 }

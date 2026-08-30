@@ -6,6 +6,7 @@ import type { BalanceRow, PaymentRow, PeriodStatus } from "@/lib/payments";
 import { foldKey } from "@/lib/normalize";
 import { money, num } from "@/lib/format";
 import { Avatar, Bar, Button, Card, Empty, Icon, Td, Th } from "./ui";
+import type { BankChangeRequestRow } from "@/lib/payments";
 
 const tl = (v: number) =>
   `₺${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
@@ -60,6 +61,8 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
         <Stat label="Ödeme isteği" value={num(totals.requests)} tone={totals.requests ? "rose" : "muted"}
           sub={totals.requests ? "yanıt bekliyor" : "bekleyen yok"} />
       </div>
+
+      <BankRequestsBar />
 
       {totals.noBank > 0 && (
         <div className="rounded-xl2 bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-2.5">
@@ -593,6 +596,76 @@ function Field({
           mono && "font-mono text-[13px]"
         )}
       />
+    </div>
+  );
+}
+
+/* ------------------------------------------- banka değişiklik istekleri */
+
+function BankRequestsBar() {
+  const [rows, setRows] = useState<BankChangeRequestRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch("/api/admin/bank-requests?status=pending");
+    const j = await r.json();
+    if (j.requests) setRows(j.requests);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const resolve = async (id: string, action: "approve" | "reject") => {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/bank-requests/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) await load();
+    } finally { setBusyId(null); }
+  };
+
+  if (loading || rows.length === 0) return null;
+
+  return (
+    <div className="rounded-xl2 bg-card border border-amber-200 shadow-card p-4 space-y-2.5">
+      <p className="text-[12.5px] font-semibold text-amber-900 flex items-center gap-2">
+        <Icon name="bank" size={15} className="text-accent-amber" />
+        {rows.length} banka değişikliği isteği onay bekliyor
+      </p>
+      {rows.map((r) => (
+        <div key={r.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-50/60">
+          <Avatar name={r.artistName} size={30} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-ink-900">{r.artistName}</p>
+            <p className="text-[11.5px] text-ink-500 font-mono truncate">
+              {r.bankName} · {r.iban}
+              {r.current?.iban && (
+                <span className="text-ink-300"> (eski: {r.current.iban})</span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => resolve(r.id, "reject")}
+              disabled={busyId === r.id}
+              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white border border-line text-ink-600 hover:bg-ink-900/[0.03] transition-colors"
+            >
+              Reddet
+            </button>
+            <button
+              onClick={() => resolve(r.id, "approve")}
+              disabled={busyId === r.id}
+              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+            >
+              {busyId === r.id ? "…" : "Onayla"}
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

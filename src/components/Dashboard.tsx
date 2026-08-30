@@ -138,7 +138,18 @@ export function Dashboard({
               0,0000
             </button>
 
-            <Button onClick={() => exportWorkbook(result, scopeLabel)} variant="primary">
+            <Button
+              onClick={() => {
+                // Denetim kaydı: indirmeyi engellemesin diye sonucu beklemiyoruz.
+                void fetch("/api/audit/export", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ scope: scopeLabel, rowCount: t.rowCount, gross: t.gross }),
+                });
+                exportWorkbook(result, scopeLabel);
+              }}
+              variant="primary"
+            >
               <Icon name="download" size={15} />
               <span className="hidden sm:inline">Excel indir</span>
             </Button>

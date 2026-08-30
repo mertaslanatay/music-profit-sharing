@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.js",
+    "start:dev-style": "next start",
     "lint": "next lint",
     "verify": "tsx scripts/verify.ts",
     "verify:db": "tsx scripts/verify-db.mts",
