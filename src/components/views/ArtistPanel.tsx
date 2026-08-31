@@ -12,11 +12,14 @@ export function ArtistPanel({
   artist,
   res,
   precise,
+  labelScope,
   onClose,
 }: {
   artist: ArtistAgg;
   res: Result;
   precise: boolean;
+  /** Verilmişse, gösterilen tüm rakamlar yalnızca bu label'dan gelen payı yansıtır. */
+  labelScope?: string | null;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -64,10 +67,19 @@ export function ArtistPanel({
         <div className="sticky top-0 bg-card border-b border-line px-5 py-4 flex items-start gap-3 z-10">
           <Avatar name={artist.name} size={44} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-[17px] font-semibold text-ink-900 truncate">{artist.name}</h2>
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-[17px] font-semibold text-ink-900 truncate">{artist.name}</h2>
+              {labelScope && (
+                <span className="shrink-0 text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-accent-amber border border-amber-200">
+                  {labelScope}
+                </span>
+              )}
+            </div>
             <p className="text-[12px] text-ink-400 mt-0.5">
-              {num(artist.songCount)} şarkı · {num(artist.quantity)} stream ·{" "}
-              {pct(t.gross ? artist.gross / t.gross : 0)} pay
+              {num(artist.songCount)} şarkı · {num(artist.quantity)} stream
+              {labelScope
+                ? " · yalnızca bu label'daki payı"
+                : <> · {pct(t.gross ? artist.gross / t.gross : 0)} pay</>}
             </p>
           </div>
           <button
@@ -205,21 +217,23 @@ export function ArtistPanel({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Section title="Label">
-              <div className="space-y-0.5">
-                {labels.map((l) => (
-                  <RankRow
-                    key={l.name}
-                    name={l.name}
-                    value={l.value}
-                    max={labels[0]?.value ?? 0}
-                    total={artist.gross}
-                    color="#F2A93B"
-                    precise={precise}
-                  />
-                ))}
-              </div>
-            </Section>
+            {!labelScope && (
+              <Section title="Label">
+                <div className="space-y-0.5">
+                  {labels.map((l) => (
+                    <RankRow
+                      key={l.name}
+                      name={l.name}
+                      value={l.value}
+                      max={labels[0]?.value ?? 0}
+                      total={artist.gross}
+                      color="#F2A93B"
+                      precise={precise}
+                    />
+                  ))}
+                </div>
+              </Section>
+            )}
 
             {collabs.length > 0 && (
               <Section title="Birlikte çalıştıkları" sub="Ortak şarkı geliri">

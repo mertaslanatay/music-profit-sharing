@@ -34,7 +34,7 @@ export function Payouts({
   res: Result;
   precise: boolean;
   query: string;
-  onArtist: (key: string) => void;
+  onArtist: (key: string, label?: string) => void;
 }) {
   const [sort, setSort] = useState<SortKey>("net");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
@@ -210,7 +210,7 @@ export function Payouts({
                   maxNet={maxNet}
                   total={scopeTotal}
                   precise={precise}
-                  onClick={() => onArtist(a.key)}
+                  onClick={() => onArtist(a.key, labelFilter || undefined)}
                 />
               ))}
             </tbody>

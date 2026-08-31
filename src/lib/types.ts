@@ -123,6 +123,8 @@ export interface ArtistLabelSlice {
   featureGross: number;
   territories: Tally;
   retailers: Tally;
+  /** Bu sanatçının bu labeldaki şarkılarında birlikte çalıştığı diğer sanatçılar. */
+  collaborators: Tally;
 }
 
 export interface SongCredit {

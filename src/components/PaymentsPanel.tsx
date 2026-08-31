@@ -62,8 +62,6 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
           sub={totals.requests ? "yanıt bekliyor" : "bekleyen yok"} />
       </div>
 
-      <BankRequestsBar />
-
       {totals.noBank > 0 && (
         <div className="rounded-xl2 bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-2.5">
           <Icon name="alert" size={16} className="text-accent-amber mt-0.5 shrink-0" />
@@ -602,19 +600,34 @@ function Field({
 
 /* ------------------------------------------- banka değişiklik istekleri */
 
-function BankRequestsBar() {
+const BANK_STATUS: Record<
+  "pending" | "approved" | "rejected",
+  { label: string; cls: string }
+> = {
+  pending: { label: "Bekliyor", cls: "bg-amber-50 text-accent-amber" },
+  approved: { label: "Onaylandı", cls: "bg-brand-50 text-brand-700" },
+  rejected: { label: "Reddedildi", cls: "bg-rose-50 text-accent-rose" },
+};
+
+/** Ayrı sekme: banka değişiklik isteklerinin onay/red ve geçmişi.
+ * Eskiden Ödemeler sekmesinin üstünde gömülüydü — çok fazla işlem tek
+ * sekmede birikince ayrı bir sekmeye taşındı (bkz. AdminSidebar). */
+export function BankRequestsPanel() {
+  const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [rows, setRows] = useState<BankChangeRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const r = await fetch("/api/admin/bank-requests?status=pending");
+  const load = useCallback(async (s: typeof status) => {
+    setLoading(true);
+    const qs = s === "all" ? "" : `?status=${s}`;
+    const r = await fetch(`/api/admin/bank-requests${qs}`);
     const j = await r.json();
     if (j.requests) setRows(j.requests);
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(status); }, [load, status]);
 
   const resolve = async (id: string, action: "approve" | "reject") => {
     setBusyId(id);
@@ -624,48 +637,87 @@ function BankRequestsBar() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      if (res.ok) await load();
+      if (res.ok) await load(status);
     } finally { setBusyId(null); }
   };
 
-  if (loading || rows.length === 0) return null;
+  const tabs: { key: typeof status; label: string }[] = [
+    { key: "pending", label: "Bekleyen" },
+    { key: "approved", label: "Onaylanan" },
+    { key: "rejected", label: "Reddedilen" },
+    { key: "all", label: "Hepsi" },
+  ];
 
   return (
-    <div className="rounded-xl2 bg-card border border-amber-200 shadow-card p-4 space-y-2.5">
-      <p className="text-[12.5px] font-semibold text-amber-900 flex items-center gap-2">
-        <Icon name="bank" size={15} className="text-accent-amber" />
-        {rows.length} banka değişikliği isteği onay bekliyor
-      </p>
-      {rows.map((r) => (
-        <div key={r.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-50/60">
-          <Avatar name={r.artistName} size={30} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium text-ink-900">{r.artistName}</p>
-            <p className="text-[11.5px] text-ink-500 font-mono truncate">
-              {r.bankName} · {r.iban}
-              {r.current?.iban && (
-                <span className="text-ink-300"> (eski: {r.current.iban})</span>
-              )}
-            </p>
+    <div className="space-y-4">
+      <div className="flex items-center gap-1.5">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setStatus(t.key)}
+            className={clsx(
+              "px-3.5 py-1.5 rounded-xl text-[12.5px] font-medium transition-colors",
+              status === t.key
+                ? "bg-ink-900 text-white"
+                : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Card pad={false}>
+        {loading ? (
+          <div className="p-8 text-center text-[13px] text-ink-400">Yükleniyor…</div>
+        ) : rows.length === 0 ? (
+          <Empty title="İstek yok" sub="Bu filtrede banka değişiklik isteği bulunmuyor." icon={<Icon name="bank" />} />
+        ) : (
+          <div className="divide-y divide-line">
+            {rows.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <Avatar name={r.artistName} size={32} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[13px] font-medium text-ink-900">{r.artistName}</p>
+                    <span className={clsx("text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full", BANK_STATUS[r.status].cls)}>
+                      {BANK_STATUS[r.status].label}
+                    </span>
+                  </div>
+                  <p className="text-[11.5px] text-ink-500 font-mono truncate mt-0.5">
+                    {r.bankName} · {r.iban}
+                    {r.current?.iban && (
+                      <span className="text-ink-300"> (eski: {r.current.iban})</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-ink-300 mt-0.5">
+                    {dateTr(r.createdAt)}
+                    {r.resolvedAt && ` · yanıt: ${dateTr(r.resolvedAt)}`}
+                  </p>
+                </div>
+                {r.status === "pending" && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => resolve(r.id, "reject")}
+                      disabled={busyId === r.id}
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white border border-line text-ink-600 hover:bg-ink-900/[0.03] transition-colors disabled:opacity-50"
+                    >
+                      Reddet
+                    </button>
+                    <button
+                      onClick={() => resolve(r.id, "approve")}
+                      disabled={busyId === r.id}
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-50"
+                    >
+                      {busyId === r.id ? "…" : "Onayla"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => resolve(r.id, "reject")}
-              disabled={busyId === r.id}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white border border-line text-ink-600 hover:bg-ink-900/[0.03] transition-colors"
-            >
-              Reddet
-            </button>
-            <button
-              onClick={() => resolve(r.id, "approve")}
-              disabled={busyId === r.id}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-            >
-              {busyId === r.id ? "…" : "Onayla"}
-            </button>
-          </div>
-        </div>
-      ))}
+        )}
+      </Card>
     </div>
   );
 }

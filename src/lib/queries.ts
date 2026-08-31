@@ -465,7 +465,7 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
     a.labelBreakdown[r.label_name] = {
       gross: n(r.gross), quantity: n(r.quantity), songCount: r.songs,
       soloGross: n(r.solo), primaryGross: n(r.primary_g), featureGross: n(r.feature),
-      territories: {}, retailers: {},
+      territories: {}, retailers: {}, collaborators: {},
     };
   }
   for (const [rows, field] of [[alTopTerr, "territories"], [alTopRet, "retailers"]] as const) {

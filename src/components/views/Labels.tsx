@@ -12,7 +12,7 @@ export function Labels({
 }: {
   res: Result;
   precise: boolean;
-  onArtist: (key: string) => void;
+  onArtist: (key: string, label?: string) => void;
 }) {
   const t = res.totals;
   const data = res.labels.map((l) => ({
@@ -106,7 +106,7 @@ export function Labels({
                     prefix={<Avatar name={a.name} size={24} />}
                     onClick={() => {
                       const k = nameToKey.get(a.name);
-                      if (k) onArtist(k);
+                      if (k) onArtist(k, l.label);
                     }}
                   />
                 ))}

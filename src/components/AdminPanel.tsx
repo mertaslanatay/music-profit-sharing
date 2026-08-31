@@ -18,6 +18,12 @@ interface UploadStats {
   periods: { label: string; year: number; month: number | null; gross: number }[];
 }
 
+interface QueueItem {
+  file: File;
+  status: "pending" | "uploading" | "done" | "error" | "duplicate";
+  message?: string;
+}
+
 const STATUS: Record<ReportRow["status"], { label: string; cls: string }> = {
   draft: { label: "Taslak", cls: "bg-accent-amber/15 text-accent-amber" },
   published: { label: "Yayında", cls: "bg-brand-50 text-brand-700" },
@@ -33,6 +39,8 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [deduction, setDeduction] = useState("");
+  const [queue, setQueue] = useState<QueueItem[] | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -41,12 +49,76 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
     if (j.reports) setReports(j.reports);
   }, []);
 
-  const pick = (f: File | null | undefined) => {
-    if (!f) return;
-    setFile(f);
-    setError(null);
+  const pick = (list: FileList | null | undefined) => {
+    const files = Array.from(list ?? []);
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      // Tek dosya: mevcut akış — rapor adı ve kesinti elle girilebilir.
+      setQueue(null);
+      setFile(files[0]);
+      setError(null);
+      setStats(null);
+      if (!title) setTitle(files[0].name.replace(/\.[^.]+$/, ""));
+      return;
+    }
+    // Birden fazla dosya: toplu yükleme kuyruğuna al. Her dosya kendi raporu
+    // olur, adı dosya adından türetilir; kesinti sonradan listeden düzenlenir.
+    setFile(null);
     setStats(null);
-    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+    setError(null);
+    setQueue(files.map((f) => ({ file: f, status: "pending" })));
+  };
+
+  const uploadOne = async (f: File, force: boolean): Promise<{ ok: true } | { ok: false; duplicate?: boolean; message: string }> => {
+    const fd = new FormData();
+    fd.set("file", f);
+    fd.set("title", f.name.replace(/\.[^.]+$/, ""));
+    fd.set("deduction", "0");
+    if (force) fd.set("force", "1");
+    try {
+      const res = await fetch("/api/reports", { method: "POST", body: fd });
+      const j = await res.json();
+      if (!res.ok) {
+        if (j.error === "duplicate") return { ok: false, duplicate: true, message: j.message ?? "Bu rapor daha önce yüklenmiş." };
+        return { ok: false, message: j.message ?? j.error ?? "Yükleme başarısız." };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : "Yükleme başarısız." };
+    }
+  };
+
+  const runQueue = async () => {
+    if (!queue) return;
+    setQueueBusy(true);
+    const next = [...queue];
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].status === "done") continue;
+      next[i] = { ...next[i], status: "uploading" };
+      setQueue([...next]);
+      const r = await uploadOne(next[i].file, false);
+      next[i] = r.ok
+        ? { ...next[i], status: "done" }
+        : { ...next[i], status: r.duplicate ? "duplicate" : "error", message: r.message };
+      setQueue([...next]);
+    }
+    setQueueBusy(false);
+    await refresh();
+  };
+
+  const retryQueueItem = async (i: number, force: boolean) => {
+    if (!queue) return;
+    setQueueBusy(true);
+    const next = [...queue];
+    next[i] = { ...next[i], status: "uploading" };
+    setQueue([...next]);
+    const r = await uploadOne(next[i].file, force);
+    next[i] = r.ok
+      ? { ...next[i], status: "done" }
+      : { ...next[i], status: r.duplicate ? "duplicate" : "error", message: r.message };
+    setQueue([...next]);
+    setQueueBusy(false);
+    await refresh();
   };
 
   const upload = async (force = false) => {
@@ -127,7 +199,7 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
         <div
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}
+          onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files); }}
           onClick={() => inputRef.current?.click()}
           className={clsx(
             "rounded-xl2 border-2 border-dashed p-8 text-center cursor-pointer transition-all",
@@ -139,59 +211,159 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
             ref={inputRef}
             type="file"
             accept=".xlsx,.xls,.xlsm,.csv,.tsv"
+            multiple
             className="hidden"
-            onChange={(e) => pick(e.target.files?.[0])}
+            onChange={(e) => pick(e.target.files)}
           />
           <div className={clsx(
             "inline-flex w-11 h-11 rounded-2xl items-center justify-center mb-3 transition-colors",
             over ? "bg-brand-500 text-white" : "bg-ink-900/[0.05] text-ink-500"
           )}>
-            <Icon name={busy ? "clock" : file ? "file" : "upload"} size={20} />
+            <Icon name={busy || queueBusy ? "clock" : file ? "file" : "upload"} size={20} />
           </div>
           <p className="text-[14px] font-medium text-ink-900">
-            {busy ? "İşleniyor…" : file ? file.name : "Excel dosyasını buraya bırak"}
+            {busy
+              ? "İşleniyor…"
+              : file
+                ? file.name
+                : queue
+                  ? `${queue.length} dosya seçildi`
+                  : "Excel dosyasını buraya bırak"}
           </p>
           <p className="text-[12.5px] text-ink-400 mt-1">
-            {file ? `${(file.size / 1024 / 1024).toFixed(1)} MB · değiştirmek için tıkla` : "veya tıklayıp seç"}
+            {file
+              ? `${(file.size / 1024 / 1024).toFixed(1)} MB · değiştirmek için tıkla`
+              : "veya tıklayıp seç · birden fazla dosya seçerek toplu yükleyebilirsin"}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-          <div className="sm:col-span-2">
-            <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Rapor adı</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="M4NM Q2 2026 Ödeme"
-              className="w-full rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">
-              SWIFT kesintisi
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-400">$</span>
-              <input
-                value={deduction}
-                onChange={(e) => setDeduction(e.target.value)}
-                inputMode="decimal"
-                placeholder="0,00"
-                className="w-full rounded-xl border border-line pl-7 pr-3 py-2 text-[13.5px] tabular outline-none focus:border-brand-500 transition-colors"
-              />
+        {file && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+              <div className="sm:col-span-2">
+                <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Rapor adı</label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="M4NM Q2 2026 Ödeme"
+                  className="w-full rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">
+                  SWIFT kesintisi
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-400">$</span>
+                  <input
+                    value={deduction}
+                    onChange={(e) => setDeduction(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    className="w-full rounded-xl border border-line pl-7 pr-3 py-2 text-[13.5px] tabular outline-none focus:border-brand-500 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 mt-4">
+              <p className="text-[11.5px] text-ink-400">
+                Kesintiyi sonradan da değiştirebilirsin — rapor kilitlenene kadar.
+              </p>
+              <Button variant="primary" onClick={() => upload()} disabled={!file || busy}>
+                <Icon name="upload" size={15} />
+                {busy ? "Yükleniyor…" : "Yükle ve işle"}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {queue && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <p className="text-[11.5px] text-ink-400">
+                Her dosya ayrı bir rapor (taslak) olarak yüklenir · adı dosya adından, kesintisi 0
+                olarak başlar — sonradan listeden düzenle.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => { setQueue(null); if (inputRef.current) inputRef.current.value = ""; }}
+                  disabled={queueBusy}
+                  className="text-[11.5px] text-ink-400 hover:text-ink-700 transition-colors disabled:opacity-40"
+                >
+                  Vazgeç
+                </button>
+                <Button
+                  variant="primary"
+                  onClick={runQueue}
+                  disabled={queueBusy || queue.every((q) => q.status === "done")}
+                >
+                  <Icon name="upload" size={15} />
+                  {queueBusy ? "Yükleniyor…" : `${queue.length} dosyayı yükle`}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl2 border border-line divide-y divide-line overflow-hidden">
+              {queue.map((q, i) => (
+                <div key={`${q.file.name}-${i}`} className="flex items-center gap-3 px-3.5 py-2.5">
+                  <Icon
+                    name={
+                      q.status === "done" ? "check"
+                      : q.status === "error" ? "alert"
+                      : q.status === "duplicate" ? "alert"
+                      : q.status === "uploading" ? "clock"
+                      : "file"
+                    }
+                    size={15}
+                    className={clsx(
+                      "shrink-0",
+                      q.status === "done" ? "text-brand-600"
+                      : q.status === "error" ? "text-accent-rose"
+                      : q.status === "duplicate" ? "text-accent-amber"
+                      : "text-ink-400"
+                    )}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] text-ink-900 truncate">{q.file.name}</p>
+                    {q.message && (
+                      <p className={clsx(
+                        "text-[11px] mt-0.5",
+                        q.status === "duplicate" ? "text-accent-amber" : "text-accent-rose"
+                      )}>
+                        {q.message}
+                      </p>
+                    )}
+                  </div>
+                  <span className={clsx(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0",
+                    q.status === "done" ? "bg-brand-50 text-brand-700"
+                    : q.status === "error" ? "bg-rose-50 text-accent-rose"
+                    : q.status === "duplicate" ? "bg-amber-50 text-accent-amber"
+                    : q.status === "uploading" ? "bg-ink-900/[0.06] text-ink-600"
+                    : "bg-ink-900/[0.04] text-ink-400"
+                  )}>
+                    {{
+                      pending: "bekliyor",
+                      uploading: "yükleniyor…",
+                      done: "yüklendi",
+                      error: "hata",
+                      duplicate: "zaten var",
+                    }[q.status]}
+                  </span>
+                  {(q.status === "error" || q.status === "duplicate") && !queueBusy && (
+                    <button
+                      onClick={() => retryQueueItem(i, q.status === "duplicate")}
+                      className="text-[11px] font-medium text-brand-600 hover:text-brand-700 shrink-0"
+                    >
+                      {q.status === "duplicate" ? "yine de yükle" : "tekrar dene"}
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 mt-4">
-          <p className="text-[11.5px] text-ink-400">
-            Kesintiyi sonradan da değiştirebilirsin — rapor kilitlenene kadar.
-          </p>
-          <Button variant="primary" onClick={() => upload()} disabled={!file || busy}>
-            <Icon name="upload" size={15} />
-            {busy ? "Yükleniyor…" : "Yükle ve işle"}
-          </Button>
-        </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-xl bg-rose-50 border border-rose-200 p-3.5 flex items-start gap-2.5 fade-in">

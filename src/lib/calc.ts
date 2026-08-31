@@ -36,6 +36,7 @@ interface LabelSlice {
   featureGross: number;
   territories: Tally;
   retailers: Tally;
+  collaborators: Tally;
 }
 
 interface ArtistBucket
@@ -235,6 +236,7 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
           featureGross: 0,
           territories: {},
           retailers: {},
+          collaborators: {},
         };
         b.labelSlices.set(labelName, ls);
       }
@@ -246,6 +248,12 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
       else ls.featureGross += credit;
       add(ls.territories, r.territory, credit);
       add(ls.retailers, r.retailer, credit);
+      if (combo.parts.length > 1) {
+        for (let j = 0; j < combo.parts.length; j++) {
+          if (j === i) continue;
+          add(ls.collaborators, combo.parts[j], credit);
+        }
+      }
 
       lab.artists.set(key, (lab.artists.get(key) ?? 0) + credit);
     }
@@ -276,6 +284,7 @@ export function compute(rows: RawRow[], cfg: EngineConfig): Result {
         featureGross: ls.featureGross,
         territories: ls.territories,
         retailers: ls.retailers,
+        collaborators: ls.collaborators,
       };
     }
     artists.push({
@@ -419,6 +428,38 @@ export function applyProRata(artists: ArtistAgg[], netRate: number, received: nu
     a.net = cents[i] / 100;
     a.deduction = round2(a.gross - a.net);
   });
+}
+
+/**
+ * Bir sanatçının tam kaydını (tüm label'lardaki toplamı) tek bir label'a daraltır.
+ * Drawer/kart bir label bağlamından açıldığında (Label ekranı, ya da Ödeme Listesi'nde
+ * label filtresi aktifken) kullanıcının gördüğü rakamlar sadece o label'dan gelen payı
+ * yansıtmalı — sanatçının diğer label'lardaki kazancı karışmamalı.
+ *
+ * net/deduction burada da (Ödeme Listesi'ndeki gibi) basit gross × netRate ile türetilir;
+ * applyProRata'daki kuruşa kadar tam dağıtım yalnızca üst toplamlar için gereklidir.
+ */
+export function scopeArtistToLabel(a: ArtistAgg, label: string, netRate: number): ArtistAgg {
+  const s = a.labelBreakdown[label];
+  const gross = s?.gross ?? 0;
+  const net = round2(gross * netRate);
+  const songs = a.songs.filter((sg) => sg.label === label);
+  return {
+    ...a,
+    gross,
+    net,
+    deduction: round2(gross - net),
+    soloGross: s?.soloGross ?? 0,
+    primaryGross: s?.primaryGross ?? 0,
+    featureGross: s?.featureGross ?? 0,
+    quantity: s?.quantity ?? 0,
+    songCount: s?.songCount ?? songs.length,
+    territories: s?.territories ?? {},
+    retailers: s?.retailers ?? {},
+    collaborators: s?.collaborators ?? {},
+    labels: { [label]: gross },
+    songs,
+  };
 }
 
 /**

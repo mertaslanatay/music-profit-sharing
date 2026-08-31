@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
 import type { PeriodRow, ReportRow } from "@/lib/queries";
 import { exportWorkbook } from "@/lib/export";
+import { scopeArtistToLabel } from "@/lib/calc";
 import { money, num, pct } from "@/lib/format";
 
 import { Sidebar, type ViewKey, type ViewerBadge } from "./Sidebar";
@@ -54,6 +55,11 @@ export function Dashboard({
   const [query, setQuery] = useState("");
   const [precise, setPrecise] = useState(false);
   const [artistKey, setArtistKey] = useState<string | null>(null);
+  const [artistLabel, setArtistLabel] = useState<string | null>(null);
+  const onArtist = (key: string, label?: string) => {
+    setArtistKey(key);
+    setArtistLabel(label ?? null);
+  };
 
   const nav = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(sp.toString());
@@ -70,10 +76,12 @@ export function Dashboard({
     nav({ v: v === "overview" ? null : v });
   };
 
-  const artist = useMemo(
-    () => (artistKey ? result.artists.find((a) => a.key === artistKey) ?? null : null),
-    [result.artists, artistKey]
-  );
+  const artist = useMemo(() => {
+    if (!artistKey) return null;
+    const base = result.artists.find((a) => a.key === artistKey) ?? null;
+    if (!base) return null;
+    return artistLabel ? scopeArtistToLabel(base, artistLabel, result.totals.netRate) : base;
+  }, [result.artists, result.totals.netRate, artistKey, artistLabel]);
 
   const isPayouts = view === "payouts";
   const scopeLabel = isPayouts
@@ -212,10 +220,10 @@ export function Dashboard({
           )}
 
           <div className="rise" key={`${view}-${reportId}-${periodIds.join(",")}`}>
-            {view === "overview" && <Overview res={result} precise={precise} onArtist={setArtistKey} />}
-            {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={setArtistKey} />}
+            {view === "overview" && <Overview res={result} precise={precise} onArtist={onArtist} />}
+            {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={onArtist} />}
             {view === "songs" && <Songs res={result} precise={precise} query={query} />}
-            {view === "labels" && <Labels res={result} precise={precise} onArtist={setArtistKey} />}
+            {view === "labels" && <Labels res={result} precise={precise} onArtist={onArtist} />}
             {view === "geo" && <Breakdown res={result} precise={precise} query={query} mode="geo" />}
             {view === "platforms" && <Breakdown res={result} precise={precise} query={query} mode="platform" />}
           </div>
@@ -233,7 +241,16 @@ export function Dashboard({
       </div>
 
       {artist && (
-        <ArtistPanel artist={artist} res={result} precise={precise} onClose={() => setArtistKey(null)} />
+        <ArtistPanel
+          artist={artist}
+          res={result}
+          precise={precise}
+          labelScope={artistLabel}
+          onClose={() => {
+            setArtistKey(null);
+            setArtistLabel(null);
+          }}
+        />
       )}
     </main>
   );
