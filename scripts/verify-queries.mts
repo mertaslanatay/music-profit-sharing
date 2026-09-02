@@ -6,7 +6,7 @@
  *   npx tsx scripts/verify-queries.mts <xlsx-yolu>
  */
 import * as fs from "node:fs";
-import * as XLSX from "xlsx";
+import * as XLSX from "@e965/xlsx";
 import { readWorkbook, toRows } from "../src/lib/parse";
 import { compute } from "../src/lib/calc";
 import { ingestReport } from "../src/lib/ingest";

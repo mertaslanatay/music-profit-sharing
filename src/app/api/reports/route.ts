@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import * as crypto from "node:crypto";
-import * as XLSX from "xlsx";
+import * as XLSX from "@e965/xlsx";
 import { readWorkbook, toRows } from "@/lib/parse";
 import { missingRequired } from "@/lib/columns";
 import { ingestReport } from "@/lib/ingest";

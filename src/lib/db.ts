@@ -18,15 +18,20 @@ function createPool(): Pool {
       "DATABASE_URL tanımlı değil. .env.local dosyasına Supabase bağlantı adresini ekle."
     );
   }
+  const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+  // Sertifika doğrulaması varsayılan olarak AÇIK — Supabase genel-güvenilir bir CA
+  // kullanıyor, doğrulamayı kapatmak bağlantıyı ortadaki-adam saldırısına karşı
+  // savunmasız bırakır. Sadece bağlantı gerçekten kopuyorsa (ör. host'un TLS zinciri
+  // farklı davranıyorsa) DATABASE_SSL_INSECURE=1 ile geçici olarak eskisi gibi
+  // (doğrulamasız) çalıştırılabilir — kod değişikliği/yeniden build gerekmeden.
+  const insecure = process.env.DATABASE_SSL_INSECURE === "1";
   return new Pool({
     connectionString,
     max: 8,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     // Supabase TLS ister; yerel geliştirmede kapalı.
-    ssl: connectionString.includes("localhost") || connectionString.includes("127.0.0.1")
-      ? undefined
-      : { rejectUnauthorized: false },
+    ssl: isLocal ? undefined : { rejectUnauthorized: !insecure },
   });
 }
 
