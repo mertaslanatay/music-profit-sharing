@@ -61,9 +61,11 @@ export function scopeFor(v: Viewer | null): AccessScope {
   if (v.status !== "active") return deny;
 
   if (v.role === "admin") {
-    // 2FA tamamlanmadan admin'in tam-erişim kapsamı açılmaz — aksi hâlde
-    // isAdmin() güvenlik kapısını kapatırken, sıradan veri sorguları
-    // (Panel, Ödeme Listesi…) her şeyi göstermeye devam ederdi.
+    // 2FA opsiyonel: kurulu değilse mfaOk her zaman true'dur. Ama admin
+    // kendi hesabına TOTP kurduysa, o oturumda ikinci adım tamamlanmadan
+    // tam-erişim kapsamı açılmaz — aksi hâlde isAdmin() kapıyı kapatırken
+    // sıradan veri sorguları (Panel, Ödeme Listesi…) her şeyi göstermeye
+    // devam ederdi.
     if (v.mfaOk === false) return deny;
     return { labelIds: null, artistIds: null, denied: false };
   }
@@ -89,15 +91,20 @@ export function scopeFor(v: Viewer | null): AccessScope {
 /**
  * Bu kullanıcı yönetim ekranlarına girebilir mi?
  *
- * Admin hesabında 2FA zorunlu (bkz. v2-sartname.md § 5) — TOTP kurulu ve
- * o oturumda doğrulanmış olmadan admin yetkileri açılmaz. mfaOk, session.ts
- * içinde Supabase Auth'un o anki AAL seviyesine bakılarak hesaplanır.
+ * 2FA opsiyoneldir (M4NM Pulse § 5): kurulu değilse mfaOk true'dur ve
+ * hiçbir engel yoktur. Kurulmuşsa, o oturumda ikinci adım tamamlanmadan
+ * admin yetkileri açılmaz. mfaOk, session.ts içinde Supabase Auth'un o
+ * anki AAL seviyesine bakılarak hesaplanır.
  */
 export const isAdmin = (v: Viewer | null): boolean =>
   v?.role === "admin" && v.status === "active" && v.mfaOk !== false;
 
-/** Admin ama 2FA'sı henüz tamamlanmamış — kuruluma yönlendirilmeli. */
-export const needsMfaSetup = (v: Viewer | null): boolean =>
+/**
+ * Admin kendi hesabına 2FA kurmuş ama bu oturumda kodu henüz girmemiş —
+ * /guvenlik ekranına yönlendirilip doğrulamayı tamamlaması gerekir.
+ * (2FA kurulu DEĞİLSE bu her zaman false döner; kimse kuruluma zorlanmaz.)
+ */
+export const needsMfaVerification = (v: Viewer | null): boolean =>
   v?.role === "admin" && v.status === "active" && v.mfaOk === false;
 
 /** Ödeme kaydedebilir / yetki atayabilir mi? */

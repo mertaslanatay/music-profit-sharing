@@ -67,7 +67,7 @@ export function Sidebar({
           </div>
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-ink-900 leading-tight tracking-tight">M4NM</p>
-            <p className="text-[11px] text-ink-400 leading-tight">Music Profit</p>
+            <p className="text-[11px] text-ink-400 leading-tight">Pulse</p>
           </div>
         </div>
       </div>

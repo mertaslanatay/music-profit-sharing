@@ -64,8 +64,10 @@ export async function getSession(): Promise<SessionInfo> {
   if (viewer.status === "pending") return { viewer: null, reason: "pending", authEmail: email };
   if (viewer.status === "suspended") return { viewer: null, reason: "suspended", authEmail: email };
 
-  // 2FA yalnızca admin için zorunlu — diğer rollerde toViewer() zaten
-  // mfaOk: true veriyor, gereksiz bir Supabase Auth çağrısından kaçınıyoruz.
+  // 2FA opsiyonel ve yalnızca admin hesabında kurulabiliyor — diğer rollerde
+  // toViewer() zaten mfaOk: true veriyor, gereksiz bir Supabase Auth
+  // çağrısından kaçınıyoruz. Kurulu değilse mfaOkFromState() de true döner,
+  // yani bu satırlar kimseyi kuruluma zorlamaz.
   if (viewer.role === "admin") {
     const state = await readMfaState(sb);
     viewer = { ...viewer, mfaOk: mfaOkFromState(state) };

@@ -1,13 +1,20 @@
 import { query, transaction } from "./db";
-import { DEFAULT_CONFIG, type EngineConfig } from "./types";
+import { activeSeparators } from "./separators";
+import { DEFAULT_CONFIG, type EngineConfig, type Separator } from "./types";
 
 /**
  * Aktif hesaplama kuralları. Yükleme sırasında bu kurallar uygulanır.
- * Kurallar değişince geçmiş raporların yeniden hesaplanması Faz 4'te gelecek —
+ * Kurallar değişince geçmiş raporların yeniden hesaplanması Faz C'de gelecek —
  * şimdilik değişiklik yalnızca sonraki yüklemeleri etkiler.
  */
 export interface ActiveRules extends EngineConfig {
   version: number;
+  /**
+   * Yöneticinin tanımladığı ayrıştırma belirteçleri (yalnızca aktif olanlar).
+   * `split` bayrakları geriye dönük uyumluluk için duruyor; ayrıştırma artık
+   * bu listeden yapılır.
+   */
+  separators: Separator[];
 }
 
 export async function getActiveRules(): Promise<ActiveRules> {
@@ -17,6 +24,8 @@ export async function getActiveRules(): Promise<ActiveRules> {
     aliases: EngineConfig["aliases"];
     overrides: EngineConfig["overrides"];
   }>(`select version, split, aliases, overrides from engine_rules where is_active limit 1`);
+
+  const separators = await activeSeparators();
 
   if (rows.length === 0) {
     // İlk çalıştırmada varsayılan kural setini kur.
@@ -29,7 +38,7 @@ export async function getActiveRules(): Promise<ActiveRules> {
       );
       return r.rows[0].version;
     });
-    return { ...DEFAULT_CONFIG, version: created };
+    return { ...DEFAULT_CONFIG, version: created, separators };
   }
 
   const r = rows[0];
@@ -39,5 +48,6 @@ export async function getActiveRules(): Promise<ActiveRules> {
     overrides: r.overrides ?? {},
     received: null,
     version: r.version,
+    separators,
   };
 }

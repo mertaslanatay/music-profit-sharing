@@ -1,7 +1,60 @@
-import type { SplitOptions } from "./types";
+import { DEFAULT_SEPARATORS, type Separator, type SplitOptions } from "./types";
 import { tidy } from "./normalize";
 
 const SEP = "\u0000";
+
+/** Regex'te özel anlamı olan karakterleri kaçırır (ör. "." → "\.", "/" → "\/"). */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Eski bayrak tabanlı ayarları (SplitOptions) belirteç listesine çevirir.
+ *
+ * Belirteçler artık veritabanından yönetiliyor; ama istemci tarafındaki
+ * hesap makinesi (localStorage'daki EngineConfig) ve doğrulama script'leri
+ * hâlâ bayraklarla çalışıyor. Bu köprü sayesinde iki yol da AYNI ayrıştırma
+ * kodunu kullanır — davranışın çatallanma riski yok.
+ */
+export function separatorsFromOptions(opt: SplitOptions): Separator[] {
+  const on: Record<string, boolean> = {
+    feat: opt.feat, featuring: opt.feat, ft: opt.feat, with: opt.feat,
+    vs: opt.vs, versus: opt.vs,
+    x: opt.x,
+    "&": opt.amp,
+    "/": opt.slash,
+    ",": opt.comma,
+  };
+  return DEFAULT_SEPARATORS.map((s, i) => ({
+    ...s,
+    id: `opt-${i}`,
+    isActive: on[s.token] ?? false,
+  }));
+}
+
+/**
+ * Belirteç listesini uygulanabilir regex'lere derler.
+ *
+ *  • word   → `\s+(?:token\.?)\s+`  (büyük/küçük harf duyarsız)
+ *  • symbol → `\s*token\s*`
+ *
+ * Yalnızca aktif belirteçler derlenir; sıralama `sort` alanına göredir
+ * (çok kelimeli belirteçler önce, virgül en sonda).
+ */
+export function compileSeparators(list: Separator[]): RegExp[] {
+  return list
+    .filter((s) => s.isActive && s.token.trim().length > 0)
+    .slice()
+    .sort((a, b) => a.sort - b.sort)
+    .map((s) => {
+      // Kelime belirteçlerinde sondaki noktayı ayrıca ele alıyoruz ki
+      // "feat" belirteci "feat." yazımını da yakalasın.
+      const t = escapeRe(
+        s.kind === "word" ? s.token.trim().replace(/\.+$/, "") : s.token.trim()
+      );
+      return s.kind === "word"
+        ? new RegExp(`\\s+(?:${t}\\.?)\\s+`, "gi")
+        : new RegExp(`\\s*${t}\\s*`, "g");
+    });
+}
 
 /**
  * Sanatçı dizisini tek tek isimlere ayırır. Sıra korunur — DÖNEN DİZİNİN
@@ -12,35 +65,20 @@ const SEP = "\u0000";
  *   "Ağaçkakan x Savai x Emiladil"             → [Ağaçkakan, Savai, Emiladil]
  *   "Armonycoma or slt"                        → [Armonycoma or slt]   (bölünmez)
  *   "Herkestam feat. Nilipek."                 → [Herkestam, Nilipek.] (sondaki nokta korunur)
+ *
+ * İkinci parametre ya yöneticinin tanımladığı belirteç listesi (veritabanı
+ * yolu) ya da eski bayrak nesnesidir (istemci/hesap makinesi yolu) —
+ * ikisi de aynı derleyiciden geçer.
  */
-export function splitArtists(raw: string, opt: SplitOptions): string[] {
+export function splitArtists(raw: string, opt: SplitOptions | Separator[]): string[] {
   const source = tidy(raw ?? "");
   if (!source) return [];
 
-  // Baş/son boşluk pedi: ayırıcı regexleri kelime sınırında \s+ bekliyor.
-  let s = ` ${source} `;
+  const seps = Array.isArray(opt) ? opt : separatorsFromOptions(opt);
 
-  // Sıra önemli: önce çok kelimeli tokenler, en son virgül.
-  if (opt.feat) {
-    s = s.replace(/\s+(?:feat\.?|featuring|ft\.?|with)\s+/gi, SEP);
-  }
-  if (opt.vs) {
-    s = s.replace(/\s+(?:vs\.?|versus)\s+/gi, SEP);
-  }
-  if (opt.x) {
-    // Yalnızca boşlukla çevrili tek "x": "Ağaçkakan x dafraktal".
-    // "Cxngxvxr" veya "Gxblin" gibi isim içi x'ler etkilenmez.
-    s = s.replace(/\s+[xX]\s+/g, SEP);
-  }
-  if (opt.amp) {
-    s = s.replace(/\s*&\s*/g, SEP);
-  }
-  if (opt.slash) {
-    s = s.replace(/\s*\/\s*/g, SEP);
-  }
-  if (opt.comma) {
-    s = s.replace(/\s*,\s*/g, SEP);
-  }
+  // Baş/son boşluk pedi: kelime belirteçleri kenarlarda \s+ bekliyor.
+  let s = ` ${source} `;
+  for (const re of compileSeparators(seps)) s = s.replace(re, SEP);
 
   const parts = s
     .split(SEP)

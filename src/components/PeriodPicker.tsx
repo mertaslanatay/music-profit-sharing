@@ -30,7 +30,19 @@ export function PayoutPicker({
   onChange: (v: string) => void;
   pending?: boolean;
 }) {
-  const published = reports.filter((r) => r.status !== "draft");
+  // Sıra: "Tüm zamanlar" → en yeni ödeme dönemi → … → en eski.
+  // Sunucu (listReports) zaten döneme göre sıralı döndürüyor; burada tekrar
+  // sıralamamızın sebebi, listenin başka bir yerden (ör. önbellek, farklı bir
+  // çağrı) gelmesi hâlinde de sıranın garanti olması. Dönemi çözülememiş
+  // rapor (periodSort=0) en sona düşer, kendi içinde yükleme tarihine göre.
+  const published = reports
+    .filter((r) => r.status !== "draft")
+    .slice()
+    .sort(
+      (a, b) =>
+        b.periodSort - a.periodSort ||
+        (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)
+    );
   return (
     <div className="flex items-center gap-2.5">
       <div className="w-9 h-9 rounded-xl bg-ink-900/[0.05] flex items-center justify-center shrink-0">

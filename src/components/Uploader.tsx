@@ -33,7 +33,7 @@ export function Uploader({
             <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-[26px] font-semibold text-ink-900 tracking-tight">
-            M4NM Music Profit
+            M4NM Pulse
           </h1>
           <p className="text-[14px] text-ink-500 mt-2 max-w-md mx-auto leading-relaxed">
             Virgin dağıtım raporunu sürükleyip bırak. Sanatçı hakedişlerini, ortak şarkı

@@ -22,7 +22,7 @@ export function AuthShell({
           </div>
           <div>
             <p className="text-[15px] font-semibold text-ink-900 leading-tight">M4NM</p>
-            <p className="text-[11.5px] text-ink-400 leading-tight">Music Profit</p>
+            <p className="text-[11.5px] text-ink-400 leading-tight">Pulse</p>
           </div>
         </div>
 

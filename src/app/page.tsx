@@ -6,7 +6,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
-import { scopeFor, isAdmin, needsMfaSetup, audit } from "@/lib/access";
+import { scopeFor, isAdmin, needsMfaVerification, audit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export default async function Page({
   if (authConfigured()) {
     if (!viewer && reason === "no-session") redirect("/giris");
     if (!viewer) redirect("/beklemede");
-    if (needsMfaSetup(viewer)) redirect("/guvenlik");
+    if (needsMfaVerification(viewer)) redirect("/guvenlik");
   }
   const access = authConfigured() ? scopeFor(viewer) : undefined;
 
@@ -100,7 +100,7 @@ function NoData() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-[24px] font-semibold text-ink-900 tracking-tight">M4NM Music Profit</h1>
+        <h1 className="text-[24px] font-semibold text-ink-900 tracking-tight">M4NM Pulse</h1>
         <p className="text-[14px] text-ink-500 mt-2.5 leading-relaxed">
           Henüz yayınlanmış bir rapor yok. Yönetim ekranından ilk Excel dosyanı yükleyip
           yayınladığında dönemler burada görünecek.

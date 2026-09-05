@@ -337,6 +337,7 @@ const PATHS: Record<string, string> = {
   print: "M7 9V3h10v6M7 19H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 15h10v6H7z",
   back: "M15 18l-6-6 6-6",
   file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
+  lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
 };
 
 export function Icon({

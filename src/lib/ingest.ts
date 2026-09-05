@@ -54,7 +54,9 @@ export function flattenCredits(rows: RawRow[], cfg: EngineConfig): FlattenResult
   const resolveCombo = (artistString: string) => {
     let c = comboCache.get(artistString);
     if (!c) {
-      const parts = splitArtists(artistString, cfg.split);
+      // Ayrıştırma belirteçleri: kural setinde varsa (sunucu yolu) onlar,
+      // yoksa eski bayraklar (istemci/hesap makinesi yolu) kullanılır.
+      const parts = splitArtists(artistString, cfg.separators ?? cfg.split);
       const ov = cfg.overrides[artistString];
       const weights =
         Array.isArray(ov) && ov.length > 0

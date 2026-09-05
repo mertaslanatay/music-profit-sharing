@@ -1,8 +1,8 @@
 import { query, n } from "./db";
 import { applyProRata } from "./calc";
 import { periodDisplay } from "./period";
-import { equalWeights, splitArtists } from "./artists";
-import { DEFAULT_SPLIT } from "./types";
+import { equalWeights, separatorsFromOptions, splitArtists } from "./artists";
+import { DEFAULT_SPLIT, type Separator, type SeparatorKind } from "./types";
 import { accessSql, type AccessScope } from "./access";
 import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
@@ -148,6 +148,12 @@ export interface ReportRow {
   periodRange: string;
   /** Okunur ad: "Mart – Nisan 2026" */
   periodDisplay: string;
+  /**
+   * Raporun kapsadığı EN YENİ dönemin sıralama anahtarı (periods.sort,
+   * YYYYMM). Listeler bu alana göre yeniden→eskiye sıralanır. Dönemi
+   * çözülememiş (sort=0) veya hiç dönemi olmayan rapor için 0'dır.
+   */
+  periodSort: number;
 }
 
 /**
@@ -179,13 +185,14 @@ export async function listReports(access?: AccessScope): Promise<ReportRow[]> {
   const rows = await query<{
     id: string; title: string; file_name: string; gross: number; deduction: number;
     received: number; row_count: number; status: ReportRow["status"];
-    created_at: string; periods: string[] | null;
+    created_at: string; periods: string[] | null; period_sort: number | null;
     meta: { year: number; month: number | null; quarter: number | null; label: string }[] | null;
   }>(
     `select r.id, r.title, r.file_name,
             ${grossExpr} gross, ${dedExpr} deduction,
             ${restricted ? `(${grossExpr} - ${dedExpr})` : `r.received::float8`} received,
             ${rowExpr} row_count, r.status, r.created_at,
+            coalesce(max(p.sort), 0) period_sort,
             array_agg(p.label order by p.sort) filter (where p.label is not null) periods,
             coalesce(
               json_agg(json_build_object('year', p.year, 'month', p.month,
@@ -199,7 +206,11 @@ export async function listReports(access?: AccessScope): Promise<ReportRow[]> {
      left join periods p on p.id = rp.period_id
      ${restricted ? `where sc.g <> 0 and r.status in ('published','locked')` : ""}
      group by r.id${restricted ? ", sc.g, sc.rc" : ""}
-     order by r.created_at desc`,
+     -- Sıralama ÖDEME DÖNEMİNE göredir, yükleme tarihine değil: bir Mart
+     -- raporu Nisan'dan sonra yüklense bile listede Nisan'ın altında kalır.
+     -- Dönemi çözülemeyen rapor (max sort = 0) en sona düşmesin diye ikincil
+     -- anahtar olarak yükleme tarihi kullanılır.
+     order by coalesce(max(p.sort), 0) desc, r.created_at desc`,
     a.params
   );
   return rows.map((r) => {
@@ -217,6 +228,7 @@ export async function listReports(access?: AccessScope): Promise<ReportRow[]> {
       periods: r.periods ?? [],
       periodRange: shortRange(r.periods ?? []),
       periodDisplay: friendlyRange(meta),
+      periodSort: n(r.period_sort),
     };
   });
 }
@@ -406,8 +418,12 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
        ${w.sql}${w.sql ? " and" : "where"} c.total_artists > 1
        group by s.artist_string order by gross desc`, w.params),
 
-    query<{ split: EngineConfig["split"] }>(
-      `select split from engine_rules where is_active limit 1`),
+    // Ayrıştırma belirteçleri (yönetici tarafından yönetiliyor). Tablo henüz
+    // yoksa (0006 migration'ı çalışmadıysa) tüm sorgu bloğu düşmesin diye
+    // hata yutulur; aşağıda koddaki varsayılan listeye düşülür.
+    query<{ id: string; token: string; kind: SeparatorKind; is_active: boolean; sort: number }>(
+      `select id, token, kind, is_active, sort from artist_separators
+       where is_active order by sort, token`).catch(() => []),
   ]);
 
   const T = totalsRow[0];
@@ -548,9 +564,15 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
   }));
 
   // --- ortak yapımlar ------------------------------------------------------
-  const activeSplit = { ...DEFAULT_SPLIT, ...(splitRow[0]?.split ?? {}) };
+  // Belirteç listesi boşsa (tablo yok / migration çalışmamış) koddaki
+  // varsayılan listeye düşeriz — eski DEFAULT_SPLIT davranışının aynısı.
+  const activeSeps: Separator[] = splitRow.length
+    ? splitRow.map((r) => ({
+        id: r.id, token: r.token, kind: r.kind, isActive: r.is_active, sort: r.sort,
+      }))
+    : separatorsFromOptions(DEFAULT_SPLIT);
   const combos: ComboAgg[] = comboRows.map((r) => {
-    const parts = splitArtists(r.artist_string, activeSplit);
+    const parts = splitArtists(r.artist_string, activeSeps);
     return {
       artistString: r.artist_string,
       parts,

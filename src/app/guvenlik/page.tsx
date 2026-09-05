@@ -9,7 +9,11 @@ import { Icon } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 /**
- * İki adımlı doğrulama kurulumu — yalnızca admin.
+ * İki adımlı doğrulama — yalnızca admin, ve OPSİYONEL.
+ *
+ * Kimse buraya zorlanmaz; admin isterse kendi hesabına TOTP kurar. Kurulu
+ * olan bir hesapta oturum aal2'ye çıkmamışsa (girişte kod girilmemişse)
+ * kullanıcı buraya yönlendirilir, doğrulamayı burada tamamlar.
  *
  * Kasıtlı olarak isAdmin()/requireAdmin() KULLANMIYORUZ: bu ekranın var
  * olma sebebi tam olarak "admin ama mfaOk henüz false" durumundaki

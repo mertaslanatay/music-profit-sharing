@@ -29,7 +29,7 @@ export async function POST() {
 
     const { data, error } = await sb.auth.mfa.enroll({
       factorType: "totp",
-      friendlyName: "M4NM Admin",
+      friendlyName: "M4NM Pulse",
     });
     if (error || !data) {
       return NextResponse.json({ error: error?.message ?? "Kayıt başlatılamadı." }, { status: 400 });

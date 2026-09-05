@@ -8,16 +8,19 @@ import { AdminPanel } from "./AdminPanel";
 import { PaymentsPanel, BankRequestsPanel } from "./PaymentsPanel";
 import { UsersPanel } from "./UsersPanel";
 import { AuditPanel } from "./AuditPanel";
+import { SeparatorsPanel } from "./SeparatorsPanel";
 import { AdminSidebar, type AdminTabDef } from "./AdminSidebar";
 import type { ViewerBadge } from "./Sidebar";
+import type { Separator } from "@/lib/types";
 
-type Tab = "reports" | "payments" | "bank-requests" | "users" | "audit";
+type Tab = "reports" | "payments" | "bank-requests" | "users" | "separators" | "audit";
 
 const TITLES: Record<Tab, { title: string; sub: string }> = {
   reports: { title: "Raporlar", sub: "Excel yükle, kontrol et, yayınla" },
   payments: { title: "Ödemeler", sub: "Sanatçı bakiyeleri ve ödeme kaydı" },
   "bank-requests": { title: "Banka Talepleri", sub: "IBAN değişiklik istekleri" },
   users: { title: "Kullanıcılar", sub: "Kayıt onayı ve yetkilendirme" },
+  separators: { title: "Ayrıştırma", sub: "Sanatçı ayırma belirteçleri" },
   audit: { title: "Denetim", sub: "İşlem kaydı ve şüpheli aktivite" },
 };
 
@@ -30,6 +33,7 @@ export function AdminTabs({
   users,
   labels,
   artists,
+  separators,
   viewer,
 }: {
   reports: ReportRow[];
@@ -37,6 +41,7 @@ export function AdminTabs({
   users: UserListRow[];
   labels: LabelOption[];
   artists: ArtistOption[];
+  separators: Separator[];
   viewer?: ViewerBadge | null;
 }) {
   const [tab, setTab] = useState<Tab>("reports");
@@ -60,6 +65,7 @@ export function AdminTabs({
     { key: "payments", label: "Ödemeler", icon: "wallet", badge: openRequests },
     { key: "bank-requests", label: "Banka Talepleri", icon: "bank", badge: pendingBankRequests },
     { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
+    { key: "separators", label: "Ayrıştırma", icon: "split" },
     { key: "audit", label: "Denetim", icon: "clock" },
   ];
 
@@ -80,6 +86,7 @@ export function AdminTabs({
           {tab === "payments" && <PaymentsPanel initial={balances} />}
           {tab === "bank-requests" && <BankRequestsPanel />}
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
+          {tab === "separators" && <SeparatorsPanel initial={separators} />}
           {tab === "audit" && <AuditPanel />}
         </div>
       </div>

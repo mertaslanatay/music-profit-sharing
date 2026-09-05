@@ -7,8 +7,10 @@ import { Icon } from "@/components/ui";
 import type { ViewerBadge } from "@/components/Sidebar";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
-import { audit, isAdmin, needsMfaSetup, type Viewer } from "@/lib/access";
+import { audit, isAdmin, needsMfaVerification, type Viewer } from "@/lib/access";
 import { query } from "@/lib/db";
+import { listSeparators } from "@/lib/separators";
+import type { Separator } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,7 @@ export default async function AdminPage() {
     const s = await getSession();
     viewer = s.viewer;
     if (!viewer) redirect(s.reason === "no-session" ? "/giris?devam=/admin" : "/beklemede");
-    if (needsMfaSetup(viewer)) redirect("/guvenlik");
+    if (needsMfaVerification(viewer)) redirect("/guvenlik");
     if (!isAdmin(viewer)) {
       const m = await requestMeta();
       await audit({
@@ -45,10 +47,11 @@ export default async function AdminPage() {
   let users: UserListRow[] = [];
   let labels: { id: string; name: string }[] = [];
   let artists: { id: string; name: string }[] = [];
+  let separators: Separator[] = [];
   let error: string | null = null;
 
   try {
-    const [rep, bal, userRows, labelRows, artistRows] = await Promise.all([
+    const [rep, bal, userRows, labelRows, artistRows, sepRows] = await Promise.all([
       listReports(),
       listBalances(),
       query<{
@@ -62,6 +65,7 @@ export default async function AdminPage() {
             created_at desc`),
       query<{ id: string; name: string }>(`select id, name from labels order by name`),
       query<{ id: string; display_name: string }>(`select id, display_name from artists order by display_name`),
+      listSeparators(),
     ]);
 
     reports = rep;
@@ -85,6 +89,7 @@ export default async function AdminPage() {
     }));
     labels = labelRows;
     artists = artistRows.map((a) => ({ id: a.id, name: a.display_name }));
+    separators = sepRows;
   } catch (e) {
     error = e instanceof Error ? e.message : "Veritabanına bağlanılamadı.";
   }
@@ -118,6 +123,7 @@ export default async function AdminPage() {
       users={users}
       labels={labels}
       artists={artists}
+      separators={separators}
       viewer={viewerBadge}
     />
   );

@@ -16,7 +16,8 @@
     "verify:db": "tsx scripts/verify-db.mts",
     "verify:queries": "tsx scripts/verify-queries.mts",
     "verify:access": "tsx scripts/verify-access.mts",
-    "uitest": "node scripts/uitest.mjs"
+    "uitest": "node scripts/uitest.mjs",
+    "verify:split": "tsx scripts/verify-split.mts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

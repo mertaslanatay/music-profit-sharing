@@ -50,6 +50,46 @@ export const DEFAULT_SPLIT: SplitOptions = {
   slash: false,
 };
 
+/**
+ * Ayırıcı belirteç türü.
+ *
+ *  • "word"   → kelime belirteci ("feat", "x", "with"). Yalnızca boşlukla
+ *               çevriliyse ayırır; isim içindeki harflere dokunmaz
+ *               ("Cxngxvxr" bölünmez). Sondaki nokta isteğe bağlıdır,
+ *               yani "feat" belirteci "feat." yazımını da yakalar.
+ *  • "symbol" → işaret belirteci (",", "&", "/"). Çevresinde boşluk
+ *               olmasa da ayırır.
+ */
+export type SeparatorKind = "word" | "symbol";
+
+/** Yönetici tarafından yönetilen sanatçı ayrıştırma belirteci. */
+export interface Separator {
+  id: string;
+  token: string;
+  kind: SeparatorKind;
+  isActive: boolean;
+  /** Uygulanma sırası — küçük olan önce. Çok kelimeli belirteçler önce gelmeli. */
+  sort: number;
+}
+
+/**
+ * Kurulum tohumları. SIRALAMA VE AKTİFLİK DURUMLARI, belirteçler veritabanına
+ * taşınmadan önceki davranışla birebir aynıdır (DEFAULT_SPLIT: comma/feat/x
+ * açık; amp/vs/slash kapalı) — yani mevcut ayrıştırma sonuçları değişmez.
+ */
+export const DEFAULT_SEPARATORS: Omit<Separator, "id">[] = [
+  { token: "feat",      kind: "word",   isActive: true,  sort: 10 },
+  { token: "featuring", kind: "word",   isActive: true,  sort: 11 },
+  { token: "ft",        kind: "word",   isActive: true,  sort: 12 },
+  { token: "with",      kind: "word",   isActive: true,  sort: 13 },
+  { token: "vs",        kind: "word",   isActive: false, sort: 20 },
+  { token: "versus",    kind: "word",   isActive: false, sort: 21 },
+  { token: "x",         kind: "word",   isActive: true,  sort: 30 },
+  { token: "&",         kind: "symbol", isActive: false, sort: 40 },
+  { token: "/",         kind: "symbol", isActive: false, sort: 50 },
+  { token: ",",         kind: "symbol", isActive: true,  sort: 60 },
+];
+
 /** Bir sanatçı dizisi için özel pay dağılımı (toplamı 1 olacak şekilde normalize edilir) */
 export type OverrideMap = Record<string, number[]>;
 
@@ -57,7 +97,17 @@ export type OverrideMap = Record<string, number[]>;
 export type AliasMap = Record<string, string>;
 
 export interface EngineConfig {
+  /**
+   * Eski bayrak tabanlı ayırıcı ayarları. İstemci tarafındaki hesap makinesi
+   * (localStorage) hâlâ bunu kullanır; sunucu yolunda `separators` doluysa o
+   * öncelikli olur.
+   */
   split: SplitOptions;
+  /**
+   * Yöneticinin tanımladığı ayrıştırma belirteçleri (sunucu yolu). İstemci
+   * hesap makinesinde tanımsızdır — o zaman `split` bayraklarına düşülür.
+   */
+  separators?: Separator[];
   aliases: AliasMap;
   overrides: OverrideMap;
   /** Bankaya fiilen yatan tutar. null ise kesinti yok. */

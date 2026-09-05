@@ -10,7 +10,7 @@ export default function GirisPage() {
   return (
     <AuthShell
       title="Giriş yap"
-      sub="M4NM Music Profit hesabınla devam et."
+      sub="M4NM Pulse hesabınla devam et."
       footer={
         <>
           Hesabın yok mu?{" "}

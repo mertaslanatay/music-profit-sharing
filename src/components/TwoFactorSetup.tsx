@@ -158,14 +158,16 @@ function EnrollState() {
     return (
       <Card>
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <Icon name="alert" size={18} className="text-accent-amber" />
+          <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
+            <Icon name="lock" size={18} className="text-brand-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-[14.5px] font-semibold text-ink-900">İki adımlı doğrulama gerekli</p>
+            <p className="text-[14.5px] font-semibold text-ink-900">İki adımlı doğrulama</p>
             <p className="text-[13px] text-ink-500 mt-1 leading-relaxed">
-              Yönetici hesapları için 2FA zorunlu — mali veriye erişim söz konusu. Google
-              Authenticator, Authy veya benzeri bir doğrulayıcı uygulama gerekir.
+              İsteğe bağlı bir ek güvenlik katmanı. Açarsan girişte şifrenin yanında
+              doğrulayıcı uygulamandaki 6 haneli kod da istenir — hesabın mali veriye
+              eriştiği için tavsiye ederiz. Google Authenticator, Authy veya benzeri
+              bir uygulama yeterli.
             </p>
           </div>
         </div>
