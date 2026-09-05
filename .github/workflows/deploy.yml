@@ -1,17 +1,28 @@
 name: cPanel'e dağıt
 
-# main'e her push'ta: bulutta build alır, tar.gz'i SSH üzerinden cPanel'deki
-# m4nm-app'e yükler, bağımlılıkları günceller ve Passenger'ı yeniden başlatır.
-# Elle tar.gz indirip cPanel'e yükleme adımını tamamen ortadan kaldırır.
+# main'e her push'ta: bulutta build alır, build çıktısını "deploy" dalına
+# push'lar, sonra sunucudaki uygulamanın kendi dağıtım kancasını (webhook)
+# çağırarak sunucunun kendi kendini güncellemesini tetikler.
+#
+# Bu hosting planında SSH/SFTP YOK (yalnızca FTP) — bu yüzden dosya
+# yükleme/SSH yerine sunucu tarafı kendi git deposundan çeker. Elle tar.gz
+# indirip cPanel'e yükleme adımını tamamen ortadan kaldırır.
 #
 # Kurulum için Mert'in yapması gerekenler — bkz. proje notları
 # (claude/deploy-otomasyonu.md):
-#   1) cPanel → Security → SSH Access'te bir anahtar çifti üret/yetkilendir
-#   2) GitHub reposunda Settings → Secrets and variables → Actions altına
-#      şu secret'ları ekle: SSH_HOST, SSH_PORT, SSH_USER, SSH_PRIVATE_KEY,
-#      NODE_VENV_ACTIVATE, DATABASE_URL, NEXT_PUBLIC_SUPABASE_URL,
-#      NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SITE_URL
-#   3) Bu dosyayı gerçek GitHub reposuna ekle (Actions sekmesi otomatik algılar)
+#   1) cPanel → Dosyalar → Git™ Version Control ile bu reponun "deploy"
+#      dalını m4nm-app klasörüne bir kere klonla (SSH gerekmez).
+#   2) cPanel → Setup Node.js App → m4nm-app → ortam değişkenlerine
+#      DEPLOY_HOOK_SECRET ekle (uzun/rastgele bir değer).
+#   3) GitHub reposunda Settings → Secrets and variables → Actions altına
+#      şu secret'ları ekle: DEPLOY_HOOK_SECRET (adım 2'deki AYNI değer),
+#      DEPLOY_HOOK_URL (ör. https://label.m4nm.net/api/internal/deploy-hook),
+#      DATABASE_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#      NEXT_PUBLIC_SITE_URL
+#   4) Artık gerekmeyen eski secret'lar (istersen silebilirsin):
+#      SSH_HOST, SSH_PORT, SSH_USER, SSH_PRIVATE_KEY, SSH_PASSPHRASE,
+#      NODE_VENV_ACTIVATE (bu sonuncusu GitHub'dan silinebilir — artık
+#      cPanel'in kendi Node.js App ortam değişkeni olarak tanımlanıyor)
 
 on:
   push:
@@ -43,38 +54,44 @@ jobs:
       - name: Build (prebuild env kontrolü dahil)
         run: npm run build
 
-      - name: Paketle
+      - name: deploy dalına build çıktısını push'la
         run: |
-          tar czf deploy.tar.gz --exclude='.next/cache' \
-            .next next.config.mjs package.json package-lock.json server.js public supabase/migrations
+          set -e
+          git config user.name "m4nm-deploy-bot"
+          git config user.email "deploy-bot@users.noreply.github.com"
 
-      - name: Sunucuya yükle
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: "deploy.tar.gz"
-          target: "~/deploy-tmp"
+          # Build çıktısını ve sunucuda gereken dosyaları, main'deki geçmişten
+          # bağımsız, tek-commit'lik bir "deploy" dalına topluyoruz. Sunucu bu
+          # dalı yalnızca `git reset --hard` ile takip ediyor — kendi tam
+          # git geçmişini tutmasına gerek yok, sadece son hâli.
+          rm -rf /tmp/deploy-worktree
+          git worktree add --detach /tmp/deploy-worktree
+          cd /tmp/deploy-worktree
+          git checkout --orphan deploy
+          git rm -rf . > /dev/null 2>&1 || true
 
-      - name: Aç, bağımlılıkları güncelle, yeniden başlat
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          script: |
-            set -e
-            cd ~/m4nm-app
-            tar xzf ~/deploy-tmp/deploy.tar.gz
-            rm -f ~/deploy-tmp/deploy.tar.gz
-            # cPanel Node.js Selector'ın kendi node/npm'i için — "Setup Node.js App"
-            # sayfasındaki "Enter to the virtual environment" komutunun tam eşleniği.
-            ${{ secrets.NODE_VENV_ACTIVATE }}
-            npm install --omit=dev
-            mkdir -p tmp
-            touch tmp/restart.txt
+          cd "$GITHUB_WORKSPACE"
+          for item in .next next.config.mjs package.json package-lock.json server.js public supabase; do
+            cp -a "$item" /tmp/deploy-worktree/
+          done
+          rm -rf /tmp/deploy-worktree/.next/cache
+
+          cd /tmp/deploy-worktree
+          git add -A
+          git commit -m "deploy: ${GITHUB_SHA::7}"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:deploy
+
+      - name: Sunucuya dağıtım kancasını tetikle
+        run: |
+          set -e
+          http_code=$(curl -sS -o /tmp/deploy-hook-response.json -w '%{http_code}' \
+            -X POST "${{ secrets.DEPLOY_HOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.DEPLOY_HOOK_SECRET }}" \
+            --max-time 300)
+          echo "Kanca yanıtı (HTTP $http_code):"
+          cat /tmp/deploy-hook-response.json
+          echo
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "Dağıtım kancası başarısız oldu (HTTP $http_code)." >&2
+            exit 1
+          fi
