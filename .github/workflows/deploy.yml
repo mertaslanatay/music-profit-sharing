@@ -29,6 +29,14 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# GITHUB_TOKEN varsayılan olarak salt-okunur geliyor — "deploy" dalına
+# force-push atabilmemiz için burada açıkça yazma izni istiyoruz. Bu,
+# reponun Settings → Actions → General → Workflow permissions ayarının
+# en az "Read and write permissions" olmasını GEREKTİRİR; o ayar daha
+# kısıtlıysa (Read-only) bu satır tek başına yetmez.
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
