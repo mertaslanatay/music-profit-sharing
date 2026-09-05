@@ -25,10 +25,16 @@ function createPool(): Pool {
   // farklı davranıyorsa) DATABASE_SSL_INSECURE=1 ile geçici olarak eskisi gibi
   // (doğrulamasız) çalıştırılabilir — kod değişikliği/yeniden build gerekmeden.
   const insecure = process.env.DATABASE_SSL_INSECURE === "1";
+  // Vercel'de her sunucusuz (serverless) örnek KENDİ havuzunu açar; aynı anda
+  // onlarca örnek çalışabildiği için örnek başına havuzu küçük tutuyoruz —
+  // aksi hâlde Supabase pooler'ın bağlantı kotası (ücretsiz planda 60) tükenir
+  // ve istekler "too many connections" ile düşer. Tek süreçli bir sunucuda
+  // (kendi sunucumuz / yerel geliştirme) ise daha geniş havuz mantıklı.
+  const serverless = !!process.env.VERCEL;
   return new Pool({
     connectionString,
-    max: 8,
-    idleTimeoutMillis: 30_000,
+    max: serverless ? 3 : 8,
+    idleTimeoutMillis: serverless ? 10_000 : 30_000,
     connectionTimeoutMillis: 10_000,
     // Supabase TLS ister; yerel geliştirmede kapalı.
     ssl: isLocal ? undefined : { rejectUnauthorized: !insecure },
