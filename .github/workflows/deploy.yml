@@ -1,0 +1,78 @@
+name: cPanel'e dağıt
+
+# main'e her push'ta: bulutta build alır, tar.gz'i SSH üzerinden cPanel'deki
+# m4nm-app'e yükler, bağımlılıkları günceller ve Passenger'ı yeniden başlatır.
+# Elle tar.gz indirip cPanel'e yükleme adımını tamamen ortadan kaldırır.
+#
+# Kurulum için Mert'in yapması gerekenler — bkz. proje notları
+# (claude/deploy-otomasyonu.md):
+#   1) cPanel → Security → SSH Access'te bir anahtar çifti üret/yetkilendir
+#   2) GitHub reposunda Settings → Secrets and variables → Actions altına
+#      şu secret'ları ekle: SSH_HOST, SSH_PORT, SSH_USER, SSH_PRIVATE_KEY,
+#      NODE_VENV_ACTIVATE, DATABASE_URL, NEXT_PUBLIC_SUPABASE_URL,
+#      NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SITE_URL
+#   3) Bu dosyayı gerçek GitHub reposuna ekle (Actions sekmesi otomatik algılar)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: .env.local yaz (yalnızca build anı için, commit edilmez)
+        run: |
+          cat > .env.local <<EOF
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          EOF
+
+      - name: Build (prebuild env kontrolü dahil)
+        run: npm run build
+
+      - name: Paketle
+        run: |
+          tar czf deploy.tar.gz --exclude='.next/cache' \
+            .next next.config.mjs package.json package-lock.json server.js public supabase/migrations
+
+      - name: Sunucuya yükle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy.tar.gz"
+          target: "~/deploy-tmp"
+
+      - name: Aç, bağımlılıkları güncelle, yeniden başlat
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ~/m4nm-app
+            tar xzf ~/deploy-tmp/deploy.tar.gz
+            rm -f ~/deploy-tmp/deploy.tar.gz
+            # cPanel Node.js Selector'ın kendi node/npm'i için — "Setup Node.js App"
+            # sayfasındaki "Enter to the virtual environment" komutunun tam eşleniği.
+            ${{ secrets.NODE_VENV_ACTIVATE }}
+            npm install --omit=dev
+            mkdir -p tmp
+            touch tmp/restart.txt
