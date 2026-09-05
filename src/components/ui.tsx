@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { colorFor, initials, money, moneySmart, num, pct } from "@/lib/format";
 
 export function Card({
@@ -338,6 +338,7 @@ const PATHS: Record<string, string> = {
   back: "M15 18l-6-6 6-6",
   file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+  bell: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
 };
 
 export function Icon({
@@ -368,6 +369,79 @@ export function Icon({
     >
       <path d={d} />
     </svg>
+  );
+}
+
+
+/* ------------------------------------------------------------------ Drawer */
+
+/**
+ * Sağdan açılan panel.
+ *
+ * Bu desen uygulamada üç yerde elle tekrar ediliyordu (sanatçı dökümü, cari
+ * hesap, bildirimler). Ortak bileşene çekildi: aynı animasyon, aynı gölge,
+ * aynı Escape davranışı ve aynı arka plan karartması her yerde geçerli olsun.
+ * Mevcut iki drawer'ın görsel çıktısı birebir korunacak şekilde yazıldı.
+ */
+export function Drawer({
+  open,
+  onClose,
+  title,
+  sub,
+  width = 560,
+  headerRight,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: ReactNode;
+  sub?: ReactNode;
+  /** Panel genişliği (px). Varsayılan 560. */
+  width?: number;
+  headerRight?: ReactNode;
+  children: ReactNode;
+}) {
+  // Escape her zaman kapatır — fare kullanmayan biri de çıkabilmeli.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed right-0 top-0 bottom-0 w-full bg-canvas z-50 slide-in overflow-y-auto scroll-thin shadow-pop no-print"
+        style={{ maxWidth: width }}
+      >
+        <div className="sticky top-0 bg-canvas/95 backdrop-blur border-b border-line px-5 py-3.5 flex items-center gap-3 z-10">
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold text-ink-900 leading-tight truncate">{title}</p>
+            {sub && <p className="text-[11.5px] text-ink-400 leading-tight mt-0.5">{sub}</p>}
+          </div>
+          {headerRight}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-ink-400 hover:bg-ink-900/[0.05] hover:text-ink-700 transition-colors shrink-0"
+            title="Kapat (Esc)"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </>
   );
 }
 

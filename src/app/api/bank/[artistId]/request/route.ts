@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createBankChangeRequest } from "@/lib/payments";
 import { requireArtistAccess, denyResponse, logAction } from "@/lib/guard";
+import { notifyMany, adminUserIds } from "@/lib/notify";
+import { asCurrency } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -19,11 +21,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ artistId: stri
       accountHolder: String(b.accountHolder ?? ""),
       bankName: String(b.bankName ?? ""),
       iban: String(b.iban ?? ""),
-      currency: b.currency === "TRY" ? "TRY" : "USD",
+      currency: asCurrency(b.currency),
       note: b.note ?? null,
     });
     if ("error" in out) return NextResponse.json({ error: out.error }, { status: 400 });
     // IBAN'ın tamamı denetim kaydına yazılmaz — son 4 hane kimliklemeye yeter.
+    await notifyMany(await adminUserIds(), {
+      type: "bank",
+      title: "Yeni banka bilgisi talebi",
+      body: `${viewer?.fullName || "Bir sanatçı"} IBAN/banka bilgisi değişikliği istedi. Onayını bekliyor.`,
+      resource: `artist:${artistId}`,
+      actionUrl: "/admin",
+      createdBy: viewer?.userId ?? null,
+    });
     await logAction(viewer, "bank_change_requested", `artist:${artistId}`, {
       ibanSon4: String(b.iban ?? "").replace(/\s+/g, "").slice(-4),
     });

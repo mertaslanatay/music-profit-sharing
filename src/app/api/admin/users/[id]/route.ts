@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne, transaction } from "@/lib/db";
 import { requireAdmin, logAction, denyResponse } from "@/lib/guard";
 import { supabaseAdmin, authConfigured } from "@/lib/supabase/server";
+import { notify } from "@/lib/notify";
+import { sendApprovalMail } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +136,43 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         }
       }
     });
+
+    // --- Onay/askı sonrası bildirim ve e-posta -----------------------------
+    // Transaction'ın DIŞINDA: bildirim veya e-posta hatası, tamamlanmış bir
+    // onayı geri almamalı. İkisi de kendi hatasını yutar.
+    if (body.action === "approve" && target.status !== "active") {
+      const person = await queryOne<{ first_name: string }>(
+        `select first_name from users where id = $1`, [id]
+      );
+      await notify({
+        userId: id,
+        type: "account",
+        title: "Hesabın onaylandı",
+        body: "Label ekibi kaydını onayladı. Hakedişlerini ve ödeme geçmişini artık görebilirsin.",
+        actionUrl: "/",
+        createdBy: admin?.userId ?? null,
+      });
+      const mail = await sendApprovalMail(target.email, person?.first_name ?? null);
+      await logAction(admin, mail.ok ? "approval_mail_sent" : "approval_mail_failed",
+        `user:${id}`, { to: target.email, error: mail.error ?? null });
+    } else if (body.action === "reject" || body.action === "suspend") {
+      await notify({
+        userId: id,
+        type: "account",
+        title: body.action === "reject" ? "Kayıt talebin onaylanmadı" : "Hesabın askıya alındı",
+        body: String(body.statusNote || "Ayrıntı için Label ekibiyle iletişime geçebilirsin.").slice(0, 300),
+        createdBy: admin?.userId ?? null,
+      });
+    } else if (body.action === "reactivate" && target.status !== "active") {
+      await notify({
+        userId: id,
+        type: "account",
+        title: "Hesabın yeniden aktif",
+        body: "Hesabına erişimin açıldı, panele girebilirsin.",
+        actionUrl: "/",
+        createdBy: admin?.userId ?? null,
+      });
+    }
 
     // Denetim kaydı
     await logAction(admin, "admin_user_update", `user:${id}`, {

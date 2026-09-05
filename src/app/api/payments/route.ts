@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { listBalances, recordPayment } from "@/lib/payments";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { notifyMany, usersForArtist } from "@/lib/notify";
+import { asCurrency } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
         periodId: String(a.periodId),
         amountUsd: Number(a.amountUsd),
       })),
-      paidCurrency: body.paidCurrency === "TRY" ? "TRY" : "USD",
+      paidCurrency: asCurrency(body.paidCurrency),
       paidAmount: Number(body.paidAmount),
       exchangeRate: body.exchangeRate === undefined || body.exchangeRate === null || body.exchangeRate === ""
         ? null : Number(body.exchangeRate),
@@ -31,9 +33,20 @@ export async function POST(req: Request) {
       paidAt: body.paidAt ?? null,
       createdBy: admin?.userId ?? null,
     });
+    const paid = Number(body.paidAmount);
+    const cur = asCurrency(body.paidCurrency);
+    await notifyMany(await usersForArtist(String(body.artistId)), {
+      type: "payment",
+      title: "Ödemen kaydedildi",
+      body: `${paid.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur} tutarındaki ödemen hesabına işlendi.`,
+      resource: `artist:${body.artistId}`,
+      actionUrl: "/hesabim",
+      createdBy: admin?.userId ?? null,
+    });
+
     await logAction(admin, "payment_recorded", `artist:${body.artistId}`, {
       paidAmount: Number(body.paidAmount),
-      currency: body.paidCurrency === "TRY" ? "TRY" : "USD",
+      currency: asCurrency(body.paidCurrency),
       periods: (body.allocations ?? []).length,
     });
     return NextResponse.json({ ok: true, ...out });

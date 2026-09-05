@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createRequest, listRequests } from "@/lib/payments";
 import { requireAdmin, requireArtistAccess, denyResponse, logAction } from "@/lib/guard";
+import { notifyMany, adminUserIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,14 @@ export async function POST(req: Request) {
     const viewer = await requireArtistAccess(artistId);
     const out = await createRequest(artistId, body.note ?? null);
     if ("error" in out) return NextResponse.json({ error: out.error }, { status: 400 });
+    await notifyMany(await adminUserIds(), {
+      type: "request",
+      title: "Yeni ödeme talebi",
+      body: `${viewer?.fullName || "Bir sanatçı"} ödeme talebi açtı.`,
+      resource: `artist:${artistId}`,
+      actionUrl: "/admin",
+      createdBy: viewer?.userId ?? null,
+    });
     await logAction(viewer, "payment_request_created", `artist:${artistId}`);
     return NextResponse.json({ ok: true, id: out.id });
   } catch (e) {

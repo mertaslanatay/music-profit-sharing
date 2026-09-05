@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { UserListRow } from "@/app/api/admin/users/route";
 import { Avatar, Button, Card, CardHead, Empty, Icon, Td, Th } from "./ui";
+import { PaymentInfoBlock } from "./PaymentInfoBlock";
 
 /* ---------------------------------------------------------------- tipler */
 
@@ -525,6 +526,32 @@ function UserDetail({
                   {a.name}
                 </label>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Ödeme bilgileri — yalnızca bir sanatçıya bağlı kullanıcılarda anlamlı.
+            Kaydedilmiş IBAN sanatçıya aittir, kullanıcıya değil; bu yüzden
+            kullanıcının erişimi olan her sanatçı için ayrı blok gösteriyoruz. */}
+        {selArtists.size > 0 && (
+          <div>
+            <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+              Ödeme Bilgileri
+            </label>
+            <div className="space-y-2">
+              {[...selArtists].slice(0, 4).map((id) => (
+                <PaymentInfoBlock
+                  key={id}
+                  artistId={id}
+                  artistName={artists.find((a) => a.id === id)?.name ?? "Sanatçı"}
+                />
+              ))}
+              {selArtists.size > 4 && (
+                <p className="text-[11.5px] text-ink-400">
+                  +{selArtists.size - 4} sanatçı daha — ödeme bilgilerini “Ödemeler”
+                  sekmesinden düzenleyebilirsin.
+                </p>
+              )}
             </div>
           </div>
         )}

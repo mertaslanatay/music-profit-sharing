@@ -3,8 +3,9 @@
 import { useCallback, useState } from "react";
 import clsx from "clsx";
 import type { BankAccount, BankChangeRequestRow, LedgerSummary, PaymentRow, PeriodStatus } from "@/lib/payments";
-import { money } from "@/lib/format";
+import { money, amountIn } from "@/lib/format";
 import { Button, Card, Empty, Icon, Stat } from "./ui";
+import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 
 const tl = (v: number) =>
   `₺${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
@@ -206,8 +207,8 @@ export function MyAccountPanel({
               <div key={p.id} className="rounded-xl border border-line p-3">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-[13px] font-medium text-ink-900">
-                    {p.paidCurrency === "TRY" ? tl(p.paidAmount) : money(p.paidAmount)}
-                    {p.paidCurrency === "TRY" && (
+                    {p.paidCurrency === "USD" ? money(p.paidAmount) : amountIn(p.paidAmount, p.paidCurrency)}
+                    {p.paidCurrency !== "USD" && (
                       <span className="text-[11.5px] text-ink-400 font-normal">
                         {" "}({money(p.amountUsd)} · kur {p.exchangeRate?.toFixed(2)})
                       </span>
@@ -245,7 +246,7 @@ function BankChangeForm({
   const [holder, setHolder] = useState(current?.accountHolder ?? "");
   const [bankName, setBankName] = useState(current?.bankName ?? "");
   const [iban, setIban] = useState(current?.iban ?? "");
-  const [currency, setCurrency] = useState<"USD" | "TRY">(current?.currency ?? "USD");
+  const [currency, setCurrency] = useState<Currency>(current?.currency ?? "USD");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -273,13 +274,13 @@ function BankChangeForm({
       <div>
         <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Para birimi</label>
         <div className="flex items-center gap-2">
-          {(["USD", "TRY"] as const).map((c) => (
+          {CURRENCIES.map((c) => (
             <button key={c} onClick={() => setCurrency(c)}
               className={clsx(
                 "px-3.5 py-2 rounded-xl text-[13px] font-medium transition-colors",
                 currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
               )}>
-              {c === "USD" ? "Dolar (USD)" : "Türk Lirası (TRY)"}
+              {CURRENCY_LABEL[c]}
             </button>
           ))}
         </div>

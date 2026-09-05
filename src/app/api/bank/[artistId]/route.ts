@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { upsertBank, getBankAccount, getOpenBankChangeRequest } from "@/lib/payments";
 import { requireAdmin, requireArtistAccess, denyResponse, logAction } from "@/lib/guard";
+import { asCurrency } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -43,12 +44,12 @@ export async function PUT(req: Request, ctx: { params: Promise<{ artistId: strin
       accountHolder: String(b.accountHolder ?? ""),
       bankName: String(b.bankName ?? ""),
       iban,
-      currency: b.currency === "TRY" ? "TRY" : "USD",
+      currency: asCurrency(b.currency),
       note: b.note ?? null,
     });
     // IBAN'ın tamamı kaydedilmez — son 4 hane kimliklemeye yeter.
     await logAction(admin, "bank_updated", `artist:${artistId}`, {
-      bank: String(b.bankName ?? ""), ibanSon4: iban.slice(-4), currency: b.currency ?? "USD",
+      bank: String(b.bankName ?? ""), ibanSon4: iban.slice(-4), currency: asCurrency(b.currency),
     });
     return NextResponse.json({ ok: true });
   } catch (e) {

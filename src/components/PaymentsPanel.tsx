@@ -4,12 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { BalanceRow, PaymentRow, PeriodStatus } from "@/lib/payments";
 import { foldKey } from "@/lib/normalize";
-import { money, num } from "@/lib/format";
+import { money, num, amountIn } from "@/lib/format";
 import { Avatar, Bar, Button, Card, Empty, Icon, Td, Th } from "./ui";
 import type { BankChangeRequestRow } from "@/lib/payments";
+import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 
-const tl = (v: number) =>
-  `₺${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
 
 const dateTr = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -211,7 +210,7 @@ function LedgerDrawer({
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [currency, setCurrency] = useState<"USD" | "TRY">(artist.bank?.currency ?? "USD");
+  const [currency, setCurrency] = useState<Currency>(artist.bank?.currency ?? "USD");
   const [rate, setRate] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -247,7 +246,7 @@ function LedgerDrawer({
     .filter((p) => sel.has(p.periodId))
     .reduce((a, p) => a + p.remaining, 0);
   const rateNum = Number(rate.replace(",", "."));
-  const paidAmount = currency === "TRY" ? amountUsd * (rateNum || 0) : amountUsd;
+  const paidAmount = currency !== "USD" ? amountUsd * (rateNum || 0) : amountUsd;
 
   const toggle = (id: string) => {
     const next = new Set(sel);
@@ -267,7 +266,7 @@ function LedgerDrawer({
             .map((p) => ({ periodId: p.periodId, amountUsd: p.remaining })),
           paidCurrency: currency,
           paidAmount,
-          exchangeRate: currency === "TRY" ? rateNum : null,
+          exchangeRate: currency !== "USD" ? rateNum : null,
           note: note || null,
         }),
       });
@@ -361,20 +360,20 @@ function LedgerDrawer({
 
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] text-ink-500 w-24">Para birimi</span>
-                    {(["USD", "TRY"] as const).map((c) => (
+                    {CURRENCIES.map((c) => (
                       <button key={c} onClick={() => setCurrency(c)}
                         className={clsx(
                           "px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors",
                           currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700"
                         )}>
-                        {c === "USD" ? "Dolar" : "TL"}
+                        {c}
                       </button>
                     ))}
                   </div>
 
-                  {currency === "TRY" && (
+                  {currency !== "USD" && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[12px] text-ink-500 w-24">USD/TL kuru</span>
+                      <span className="text-[12px] text-ink-500 w-24">Kur (1 USD = ?)</span>
                       <input
                         value={rate}
                         onChange={(e) => setRate(e.target.value)}
@@ -383,7 +382,7 @@ function LedgerDrawer({
                         className="w-28 rounded-lg border border-line px-2.5 py-1.5 text-[13px] tabular bg-white outline-none focus:border-brand-500"
                       />
                       <span className="text-[12.5px] text-ink-500 ml-auto">
-                        Ödenecek: <b className="text-ink-900 tabular">{rateNum > 0 ? tl(paidAmount) : "—"}</b>
+                        Ödenecek: <b className="text-ink-900 tabular">{rateNum > 0 ? amountIn(paidAmount, currency) : "—"}</b>
                       </span>
                     </div>
                   )}
@@ -404,11 +403,11 @@ function LedgerDrawer({
                   <Button
                     variant="primary"
                     className="w-full justify-center"
-                    disabled={busy || sel.size === 0 || (currency === "TRY" && !(rateNum > 0))}
+                    disabled={busy || sel.size === 0 || (currency !== "USD" && !(rateNum > 0))}
                     onClick={submit}
                   >
                     <Icon name="check" size={15} strokeWidth={2.4} />
-                    {busy ? "Kaydediliyor…" : `Ödemeyi kaydet · ${currency === "TRY" && rateNum > 0 ? tl(paidAmount) : money(amountUsd)}`}
+                    {busy ? "Kaydediliyor…" : `Ödemeyi kaydet · ${currency !== "USD" && rateNum > 0 ? amountIn(paidAmount, currency) : money(amountUsd)}`}
                   </Button>
                 </div>
               </>
@@ -455,8 +454,8 @@ function LedgerDrawer({
                   <div key={p.id} className="rounded-xl border border-line p-3">
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="text-[13px] font-medium text-ink-900">
-                        {p.paidCurrency === "TRY" ? tl(p.paidAmount) : money(p.paidAmount)}
-                        {p.paidCurrency === "TRY" && (
+                        {p.paidCurrency === "USD" ? money(p.paidAmount) : amountIn(p.paidAmount, p.paidCurrency)}
+                        {p.paidCurrency !== "USD" && (
                           <span className="text-[11.5px] text-ink-400 font-normal">
                             {" "}({money(p.amountUsd)} · kur {p.exchangeRate?.toFixed(2)})
                           </span>
@@ -501,7 +500,7 @@ function BankDialog({
   const [holder, setHolder] = useState(b?.accountHolder ?? artist.artistName);
   const [bank, setBank] = useState(b?.bankName ?? "");
   const [iban, setIban] = useState(b?.iban ?? "");
-  const [currency, setCurrency] = useState<"USD" | "TRY">(b?.currency ?? "USD");
+  const [currency, setCurrency] = useState<Currency>(b?.currency ?? "USD");
   const [note, setNote] = useState(b?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -544,13 +543,13 @@ function BankDialog({
             <div>
               <label className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Para birimi</label>
               <div className="flex items-center gap-2">
-                {(["USD", "TRY"] as const).map((c) => (
+                {CURRENCIES.map((c) => (
                   <button key={c} onClick={() => setCurrency(c)}
                     className={clsx(
                       "px-3.5 py-2 rounded-xl text-[13px] font-medium transition-colors",
                       currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
                     )}>
-                    {c === "USD" ? "Dolar (USD)" : "Türk Lirası (TRY)"}
+                    {CURRENCY_LABEL[c]}
                   </button>
                 ))}
               </div>

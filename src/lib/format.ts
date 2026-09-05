@@ -12,6 +12,22 @@ export function money(v: number, precise = false): string {
   return n < 0 ? `-$${s.replace("-", "")}` : `$${s}`;
 }
 
+/**
+ * Herhangi bir para birimindeki tutar: "1.234,56 €", "1.234,56 ₺".
+ * USD için mevcut money() kullanılmaya devam eder (başta $ ile).
+ */
+const CURRENCY_SIGN: Record<string, string> = {
+  USD: "$", TRY: "₺", EUR: "€", GBP: "£",
+};
+
+export function amountIn(v: number, code: string): string {
+  const n = Number.isFinite(v) ? v : 0;
+  const s = f2.format(Math.abs(n));
+  const sign = CURRENCY_SIGN[code] ?? "";
+  const body = code === "USD" ? `${sign}${s}` : `${s} ${sign || code}`.trim();
+  return n < 0 ? `-${body}` : body;
+}
+
 /** Tabloda görünmeyen mikro tutarları belli eder. */
 export function moneySmart(v: number, precise = false): string {
   if (!precise && v !== 0 && Math.abs(v) < 0.005) return v > 0 ? "<$0,01" : ">-$0,01";

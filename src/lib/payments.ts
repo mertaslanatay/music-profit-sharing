@@ -1,3 +1,4 @@
+import { type Currency } from "./types";
 import { query, queryOne, transaction, n } from "./db";
 import { periodDisplay } from "./period";
 
@@ -8,7 +9,7 @@ export interface BankAccount {
   accountHolder: string;
   bankName: string;
   iban: string;
-  currency: "USD" | "TRY";
+  currency: Currency;
   note: string | null;
   updatedAt: string | null;
 }
@@ -46,7 +47,7 @@ export interface PaymentRow {
   artistId: string;
   artistName: string;
   amountUsd: number;
-  paidCurrency: "USD" | "TRY";
+  paidCurrency: Currency;
   paidAmount: number;
   exchangeRate: number | null;
   ibanSnapshot: string | null;
@@ -61,7 +62,7 @@ export interface PaymentRow {
 export async function getBankAccount(artistId: string): Promise<BankAccount | null> {
   const r = await queryOne<{
     account_holder: string; bank_name: string; iban: string;
-    currency: "USD" | "TRY"; note: string | null; updated_at: string | null;
+    currency: Currency; note: string | null; updated_at: string | null;
   }>(
     `select account_holder, bank_name, iban, currency, note, updated_at
      from artist_bank_accounts where artist_id = $1`,
@@ -112,7 +113,7 @@ export async function listBalances(): Promise<BalanceRow[]> {
     period_count: number; unpaid_periods: number; oldest_unpaid_sort: number | null;
     last_paid_at: string | null; open_request_id: string | null; open_request_at: string | null;
     holder: string | null; bank: string | null; iban: string | null;
-    currency: "USD" | "TRY" | null; bnote: string | null; bupdated: string | null;
+    currency: Currency | null; bnote: string | null; bupdated: string | null;
     oldest_label: string | null; oldest_year: number | null;
     oldest_month: number | null; oldest_quarter: number | null;
   }>(
@@ -208,7 +209,7 @@ export async function getArtistLedger(artistId: string): Promise<{
     ),
     query<{
       id: string; artist_id: string; artist_name: string; amount_usd: number;
-      paid_currency: "USD" | "TRY"; paid_amount: number; exchange_rate: number | null;
+      paid_currency: Currency; paid_amount: number; exchange_rate: number | null;
       iban_snapshot: string | null; bank_snapshot: string | null; note: string | null;
       paid_at: string; periods: { period_id: string; label: string; year: number;
         month: number | null; quarter: number | null; amount_usd: number }[] | null;
@@ -257,7 +258,7 @@ export async function getArtistLedger(artistId: string): Promise<{
 
 function mapPayment(r: {
   id: string; artist_id: string; artist_name: string; amount_usd: number;
-  paid_currency: "USD" | "TRY"; paid_amount: number; exchange_rate: number | null;
+  paid_currency: Currency; paid_amount: number; exchange_rate: number | null;
   iban_snapshot: string | null; bank_snapshot: string | null; note: string | null;
   paid_at: string; periods: { period_id: string; label: string; year: number;
     month: number | null; quarter: number | null; amount_usd: number }[] | null;
@@ -288,10 +289,10 @@ export interface RecordPaymentInput {
   artistId: string;
   /** Kapatılacak dönemler ve her birine düşen USD tutarı */
   allocations: { periodId: string; amountUsd: number }[];
-  paidCurrency: "USD" | "TRY";
-  /** Fiilen ödenen tutar (TRY ise TL cinsinden) */
+  paidCurrency: Currency;
+  /** Fiilen ödenen tutar (USD dışı bir para biriminde ise o para biriminde) */
   paidAmount: number;
-  /** TRY ödemede USD→TRY kuru */
+  /** USD dışı ödemede 1 USD karşılığı kur (ör. USD→TRY) */
   exchangeRate?: number | null;
   note?: string | null;
   paidAt?: string | null;
@@ -305,8 +306,9 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
 
   const amountUsd = allocations.reduce((a, x) => a + x.amountUsd, 0);
   if (!(amountUsd > 0)) throw new Error("Ödeme tutarı sıfırdan büyük olmalı.");
-  if (input.paidCurrency === "TRY" && !(Number(input.exchangeRate) > 0)) {
-    throw new Error("TL ödemede kur girilmeli.");
+  // USD dışındaki her para biriminde kur zorunlu (payments_rate_required).
+  if (input.paidCurrency !== "USD" && !(Number(input.exchangeRate) > 0)) {
+    throw new Error(`${input.paidCurrency} ödemede kur girilmeli.`);
   }
 
   return transaction(async (c) => {
@@ -344,7 +346,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
         amountUsd,
         input.paidCurrency,
         input.paidAmount,
-        input.paidCurrency === "TRY" ? input.exchangeRate : null,
+        input.paidCurrency !== "USD" ? input.exchangeRate : null,
         bank.rows[0]?.iban ?? null,
         bank.rows[0]?.bank_name ?? null,
         input.note ?? null,
@@ -471,7 +473,7 @@ export interface BankChangeRequestRow {
   accountHolder: string;
   bankName: string;
   iban: string;
-  currency: "USD" | "TRY";
+  currency: Currency;
   note: string | null;
   status: "pending" | "approved" | "rejected";
   adminNote: string | null;
@@ -483,11 +485,11 @@ export interface BankChangeRequestRow {
 
 function mapBankChangeRequest(r: {
   id: string; artist_id: string; artist_name: string; account_holder: string;
-  bank_name: string; iban: string; currency: "USD" | "TRY"; note: string | null;
+  bank_name: string; iban: string; currency: Currency; note: string | null;
   status: "pending" | "approved" | "rejected"; admin_note: string | null;
   created_at: string; resolved_at: string | null;
   cur_holder: string | null; cur_bank: string | null; cur_iban: string | null;
-  cur_currency: "USD" | "TRY" | null; cur_note: string | null; cur_updated: string | null;
+  cur_currency: Currency | null; cur_note: string | null; cur_updated: string | null;
 }): BankChangeRequestRow {
   return {
     id: r.id,
@@ -560,7 +562,7 @@ export interface CreateBankChangeInput {
   accountHolder: string;
   bankName: string;
   iban: string;
-  currency: "USD" | "TRY";
+  currency: Currency;
   note?: string | null;
 }
 
@@ -604,7 +606,7 @@ export async function resolveBankChangeRequest(
   return transaction(async (c) => {
     const req = await c.query<{
       id: string; artist_id: string; account_holder: string; bank_name: string;
-      iban: string; currency: "USD" | "TRY"; status: string;
+      iban: string; currency: Currency; status: string;
     }>(
       `select id, artist_id, account_holder, bank_name, iban, currency, status
        from bank_change_requests where id = $1 for update`,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { notifyMany, usersInReport } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         id,
         body.status,
       ]);
+    }
+
+    // Taslak → yayında geçişi, sanatçının hakedişinin görünür hâle geldiği
+    // andır: ilgili sanatçılara bildirim gider. Yalnızca İLK yayınlamada —
+    // zaten yayındaki bir raporun kesintisi düzeltilince tekrar bildirim
+    // göndermek gürültü olurdu.
+    if (body.status === "published" && current.status !== "published") {
+      const report = await queryOne<{ title: string; file_name: string }>(
+        `select title, file_name from reports where id = $1`, [id]
+      );
+      const adi = report?.title || report?.file_name || "Yeni ödeme partisi";
+      const targets = await usersInReport(id);
+      await notifyMany(targets, {
+        type: "payment_batch",
+        title: "Yeni ödeme partisi yayınlandı",
+        body: `${adi} yayınlandı. Bu dönemdeki hakedişini panelinden görebilirsin.`,
+        resource: `report:${id}`,
+        actionUrl: "/?v=payouts",
+        createdBy: admin?.userId ?? null,
+      });
     }
 
     const updated = await queryOne(`select * from reports where id = $1`, [id]);

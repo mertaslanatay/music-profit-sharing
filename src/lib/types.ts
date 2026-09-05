@@ -51,6 +51,26 @@ export const DEFAULT_SPLIT: SplitOptions = {
 };
 
 /**
+ * Desteklenen para birimleri (M4NM Pulse § 10). IBAN'a bağlı para birimi
+ * zorunludur; USD dışındaki her ödemede kur girilmesi de zorunludur
+ * (payments_rate_required kısıtı).
+ */
+export const CURRENCIES = ["USD", "TRY", "EUR", "GBP"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
+/** Arayüzde gösterilen adlar. */
+export const CURRENCY_LABEL: Record<Currency, string> = {
+  USD: "Dolar (USD)",
+  TRY: "Türk Lirası (TRY)",
+  EUR: "Euro (EUR)",
+  GBP: "Sterlin (GBP)",
+};
+
+/** Bilinmeyen/boş değeri güvenli biçimde para birimine çevirir. */
+export const asCurrency = (v: unknown): Currency =>
+  (CURRENCIES as readonly string[]).includes(String(v)) ? (String(v) as Currency) : "USD";
+
+/**
  * Ayırıcı belirteç türü.
  *
  *  • "word"   → kelime belirteci ("feat", "x", "with"). Yalnızca boşlukla

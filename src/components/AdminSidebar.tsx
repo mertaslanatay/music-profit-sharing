@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { Icon } from "./ui";
+import { NotificationBell } from "./NotificationBell";
 import { LogoutButton } from "./auth/LogoutButton";
 import type { ViewerBadge } from "./Sidebar";
 
@@ -83,6 +84,7 @@ export function AdminSidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
+        {viewer && <NotificationBell />}
         <Link
           href="/"
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"

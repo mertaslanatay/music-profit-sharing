@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 import { audit, rateLimit } from "@/lib/access";
 import { supabaseAnon, authConfigured } from "@/lib/supabase/server";
+import { notifyMany, adminUserIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -104,6 +105,15 @@ export async function POST(req: Request) {
       { error: "Kayıt tamamlanamadı. Lütfen biraz sonra tekrar dene." }, { status: 502 }
     );
   }
+
+  // Yönetici onayı olmadan kimse giremiyor — bekleyen talebi haber veriyoruz.
+  await notifyMany(await adminUserIds(), {
+    type: "account",
+    title: "Yeni kayıt talebi",
+    body: `${firstName} ${lastName} (${email}) kayıt oldu, onayını bekliyor.`,
+    resource: `user:${created.id}`,
+    actionUrl: "/admin",
+  });
 
   await audit({
     userId: created.id, action: "register", resource: email, ip,

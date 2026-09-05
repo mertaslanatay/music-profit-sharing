@@ -9,11 +9,12 @@ import { PaymentsPanel, BankRequestsPanel } from "./PaymentsPanel";
 import { UsersPanel } from "./UsersPanel";
 import { AuditPanel } from "./AuditPanel";
 import { SeparatorsPanel } from "./SeparatorsPanel";
+import { AnnouncementsPanel } from "./AnnouncementsPanel";
 import { AdminSidebar, type AdminTabDef } from "./AdminSidebar";
 import type { ViewerBadge } from "./Sidebar";
 import type { Separator } from "@/lib/types";
 
-type Tab = "reports" | "payments" | "bank-requests" | "users" | "separators" | "audit";
+type Tab = "reports" | "payments" | "bank-requests" | "users" | "separators" | "announcements" | "audit";
 
 const TITLES: Record<Tab, { title: string; sub: string }> = {
   reports: { title: "Raporlar", sub: "Excel yükle, kontrol et, yayınla" },
@@ -21,6 +22,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   "bank-requests": { title: "Banka Talepleri", sub: "IBAN değişiklik istekleri" },
   users: { title: "Kullanıcılar", sub: "Kayıt onayı ve yetkilendirme" },
   separators: { title: "Ayrıştırma", sub: "Sanatçı ayırma belirteçleri" },
+  announcements: { title: "Duyurular", sub: "Kullanıcılara yayınlanan güncellemeler" },
   audit: { title: "Denetim", sub: "İşlem kaydı ve şüpheli aktivite" },
 };
 
@@ -66,6 +68,7 @@ export function AdminTabs({
     { key: "bank-requests", label: "Banka Talepleri", icon: "bank", badge: pendingBankRequests },
     { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
     { key: "separators", label: "Ayrıştırma", icon: "split" },
+    { key: "announcements", label: "Duyurular", icon: "bell" },
     { key: "audit", label: "Denetim", icon: "clock" },
   ];
 
@@ -87,6 +90,7 @@ export function AdminTabs({
           {tab === "bank-requests" && <BankRequestsPanel />}
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
           {tab === "separators" && <SeparatorsPanel initial={separators} />}
+          {tab === "announcements" && <AnnouncementsPanel />}
           {tab === "audit" && <AuditPanel />}
         </div>
       </div>
