@@ -15,13 +15,19 @@ export function Songs({
   precise,
   query,
   reportId,
+  reportLabel,
+  onClearReport,
   onChanged,
 }: {
   res: Result;
   precise: boolean;
   query: string;
-  /** Seçili ödeme partisi — "all" ise gelir devri açılmaz (devir dönem bazlıdır). */
+  /** Seçili ödeme partisi — "all"/boş ise gelir devri açılmaz (devir dönem bazlıdır). */
   reportId?: string;
+  /** reportId'nin görünen adı — üstteki "Gelir devri kapsamı" şeridi için. */
+  reportLabel?: string | null;
+  /** Kapsamı "Kapalı"ya döndürür (üstteki seçiciyle aynı). */
+  onClearReport?: () => void;
   onChanged?: () => void;
 }) {
   const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
@@ -103,6 +109,31 @@ export function Songs({
         >
           Sadece ortak yapımlar
         </button>
+      </div>
+
+      <div className="px-5 py-2.5 border-b border-line flex items-center gap-2">
+        {canOpen ? (
+          <>
+            <Icon name="split" size={13} className="text-brand-600 shrink-0" />
+            <p className="text-[12px] text-ink-600">
+              Gelir devri açık — <b>{reportLabel ?? "seçili ödeme partisi"}</b> kapsamında; 🔀
+              işaretli satırlara tıkla.
+            </p>
+            {onClearReport && (
+              <button
+                onClick={onClearReport}
+                className="ml-auto text-[11.5px] text-ink-400 hover:text-ink-700 transition-colors shrink-0"
+              >
+                Kapat
+              </button>
+            )}
+          </>
+        ) : (
+          <p className="text-[12px] text-ink-400">
+            Şarkı bazlı gelir hakkı devri için üstten bir <b>ödeme partisi</b> seç — dönem
+            seçicisi bunun için yeterli değil.
+          </p>
+        )}
       </div>
 
       {rows.length === 0 ? (

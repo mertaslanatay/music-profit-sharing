@@ -51,6 +51,12 @@ export default async function Page({
   const rawReport = str("r");
   const reportId = publishedIds.has(rawReport) ? rawReport : "all";
 
+  // Şarkı ekranındaki "gelir devri kapsamı" kasıtlı olarak AYRI bir parametre
+  // (r değil, tr) — aksi hâlde Şarkılar'da devir için seçilen ödeme partisi,
+  // sekme değiştirilince Ödeme Listesi'nin kendi seçimini sessizce değiştirirdi.
+  const rawTransferReport = str("tr");
+  const transferReportId = publishedIds.has(rawTransferReport) ? rawTransferReport : "all";
+
   const validPeriods = new Set(periods.map((p) => p.id));
   const periodIds = str("p").split(",").map((x) => x.trim()).filter((x) => validPeriods.has(x));
 
@@ -70,7 +76,7 @@ export default async function Page({
     void audit({
       userId: viewer.userId, action: "view_dashboard", resource: view,
       ip: meta.ip, userAgent: meta.userAgent,
-      meta: { reportId, periodIds, gross: Math.round(result.totals.gross * 100) / 100 },
+      meta: { reportId, transferReportId, periodIds, gross: Math.round(result.totals.gross * 100) / 100 },
     });
   }
 
@@ -81,6 +87,7 @@ export default async function Page({
       reports={reports}
       view={view}
       reportId={reportId}
+      transferReportId={transferReportId}
       periodIds={periodIds}
       viewer={viewer ? {
         fullName: viewer.fullName,

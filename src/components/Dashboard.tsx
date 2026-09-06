@@ -35,6 +35,7 @@ export function Dashboard({
   reports,
   view,
   reportId,
+  transferReportId,
   periodIds,
   viewer = null,
 }: {
@@ -44,6 +45,12 @@ export function Dashboard({
   view: ViewKey;
   /** Ödeme Listesi kapsamı: rapor id veya "all" */
   reportId: string;
+  /**
+   * Şarkılar ekranındaki "gelir devri kapsamı" — reportId'den KASITLI olarak
+   * ayrı bir durum. Aynı param olsaydı Şarkılar'da devir için seçilen rapor,
+   * sekme değiştirince Ödeme Listesi'nin seçimini sessizce değiştirirdi.
+   */
+  transferReportId: string;
   /** Diğer ekranların kapsamı: seçili dönem id'leri (boş = tüm zamanlar) */
   periodIds: string[];
   /** Oturum açık kullanıcı — auth kurulmadan önce null */
@@ -189,6 +196,29 @@ export function Dashboard({
               </p>
             )}
 
+            {/* Şarkı ekranındaki liste dönem bazlı süzülür (yukarıdaki seçici);
+                gelir devri ise HER ZAMAN tek bir ödeme partisine bağlıdır — bu
+                yüzden ayrı bir seçici gerekiyor. Kapalıyken satırlar tıklanmaz.
+                KASITLI OLARAK reportId DEĞİL transferReportId kullanılıyor —
+                aksi hâlde Ödeme Listesi'nin kendi seçimi sessizce değişirdi. */}
+            {view === "songs" && (
+              <PayoutPicker
+                reports={reports}
+                value={transferReportId}
+                onChange={(v) => nav({ tr: v === "all" ? null : v })}
+                pending={pending}
+                label="Gelir devri kapsamı"
+                offLabel="Kapalı"
+                icon="split"
+              />
+            )}
+            {view === "songs" && (
+              <p className="text-[11.5px] text-ink-400 max-w-[240px] leading-snug hidden xl:block">
+                Bir ödeme partisi seçtiğinde o partideki şarkılara tıklayıp gelir hakkı
+                devredebilirsin — dönem seçicisinden bağımsızdır.
+              </p>
+            )}
+
             <div className="ml-auto flex items-center gap-4">
               <Field label="Brüt" value={money(t.gross, true)} />
               <Field label="SWIFT kesintisi" value={t.deduction ? money(t.deduction) : "—"}
@@ -219,7 +249,7 @@ export function Dashboard({
             </div>
           )}
 
-          <div className="rise" key={`${view}-${reportId}-${periodIds.join(",")}`}>
+          <div className="rise" key={`${view}-${reportId}-${transferReportId}-${periodIds.join(",")}`}>
             {view === "overview" && <Overview res={result} precise={precise} onArtist={onArtist} />}
             {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={onArtist} />}
             {view === "songs" && (
@@ -227,7 +257,16 @@ export function Dashboard({
                 res={result}
                 precise={precise}
                 query={query}
-                reportId={reportId}
+                reportId={transferReportId}
+                reportLabel={
+                  transferReportId === "all"
+                    ? null
+                    : (() => {
+                        const r = reports.find((x) => x.id === transferReportId);
+                        return r ? `${r.periodRange}${r.periodDisplay ? ` — ${r.periodDisplay}` : ""}` : null;
+                      })()
+                }
+                onClearReport={() => nav({ tr: null })}
                 onChanged={() => router.refresh()}
               />
             )}

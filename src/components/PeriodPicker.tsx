@@ -23,12 +23,20 @@ export function PayoutPicker({
   value,
   onChange,
   pending,
+  label = "Ödeme partisi",
+  offLabel = "Tüm zamanlar",
+  icon = "bank",
 }: {
   reports: ReportRow[];
   /** rapor id veya "all" */
   value: string;
   onChange: (v: string) => void;
   pending?: boolean;
+  /** Etiket metni — aynı seçiciyi farklı bağlamda (ör. gelir devri) kullanmak için. */
+  label?: string;
+  /** "all" seçeneğinin görünen adı. */
+  offLabel?: string;
+  icon?: string;
 }) {
   // Sıra: "Tüm zamanlar" → en yeni ödeme dönemi → … → en eski.
   // Sunucu (listReports) zaten döneme göre sıralı döndürüyor; burada tekrar
@@ -46,16 +54,16 @@ export function PayoutPicker({
   return (
     <div className="flex items-center gap-2.5">
       <div className="w-9 h-9 rounded-xl bg-ink-900/[0.05] flex items-center justify-center shrink-0">
-        <Icon name={pending ? "clock" : "bank"} size={17} className="text-ink-700" />
+        <Icon name={pending ? "clock" : icon} size={17} className="text-ink-700" />
       </div>
       <div>
-        <label className="block text-[11px] font-medium text-ink-400 mb-1">Ödeme partisi</label>
+        <label className="block text-[11px] font-medium text-ink-400 mb-1">{label}</label>
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="rounded-xl border border-line px-3 py-1.5 text-[13px] font-medium bg-white outline-none focus:border-brand-500 transition-colors min-w-[240px]"
         >
-          <option value="all">Tüm zamanlar</option>
+          <option value="all">{offLabel}</option>
           {published.map((r) => (
             <option key={r.id} value={r.id}>
               {r.periodRange}
