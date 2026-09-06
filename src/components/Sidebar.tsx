@@ -120,7 +120,10 @@ export function Sidebar({
           </button>
         )}
 
-        {viewer && (
+        {/* Adminlerde bu link gösterilmez — yönetim panelinde zaten aynı
+            konuşmalara "Mesajlar" sekmesinden, üstelik hepsine birden,
+            ulaşılıyor. Burada tekrar göstermek kafa karıştırır. */}
+        {viewer && !viewer.isAdmin && (
           <Link
             href="/destek"
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"

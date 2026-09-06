@@ -11,11 +11,12 @@ import { AuditPanel } from "./AuditPanel";
 import { SeparatorsPanel } from "./SeparatorsPanel";
 import { AnnouncementsPanel } from "./AnnouncementsPanel";
 import { SupportPanel } from "./SupportPanel";
+import { AdminMailPanel } from "./AdminMailPanel";
 import { AdminSidebar, type AdminTabDef } from "./AdminSidebar";
 import type { ViewerBadge } from "./Sidebar";
 import type { Separator } from "@/lib/types";
 
-type Tab = "reports" | "payments" | "bank-requests" | "users" | "messages" | "separators" | "announcements" | "audit";
+type Tab = "reports" | "payments" | "bank-requests" | "users" | "messages" | "mail" | "separators" | "announcements" | "audit";
 
 const TITLES: Record<Tab, { title: string; sub: string }> = {
   reports: { title: "Raporlar", sub: "Excel yükle, kontrol et, yayınla" },
@@ -23,6 +24,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   "bank-requests": { title: "Banka Talepleri", sub: "IBAN değişiklik istekleri" },
   users: { title: "Kullanıcılar", sub: "Kayıt onayı ve yetkilendirme" },
   messages: { title: "Mesajlar", sub: "Sanatçılardan gelen talepler" },
+  mail: { title: "E-posta", sub: "Kayıtlı kullanıcıya veya serbest adrese e-posta gönder" },
   separators: { title: "Ayrıştırma", sub: "Sanatçı ayırma belirteçleri" },
   announcements: { title: "Duyurular", sub: "Kullanıcılara yayınlanan güncellemeler" },
   audit: { title: "Denetim", sub: "İşlem kaydı ve şüpheli aktivite" },
@@ -85,6 +87,7 @@ export function AdminTabs({
     { key: "bank-requests", label: "Banka Talepleri", icon: "bank", badge: pendingBankRequests },
     { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
     { key: "messages", label: "Mesajlar", icon: "copy", badge: unreadThreads },
+    { key: "mail", label: "E-posta", icon: "mail" },
     { key: "separators", label: "Ayrıştırma", icon: "split" },
     { key: "announcements", label: "Duyurular", icon: "bell" },
     { key: "audit", label: "Denetim", icon: "clock" },
@@ -108,6 +111,7 @@ export function AdminTabs({
           {tab === "bank-requests" && <BankRequestsPanel />}
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
           {tab === "messages" && <SupportPanel mode="admin" />}
+          {tab === "mail" && <AdminMailPanel users={users} />}
           {tab === "separators" && <SeparatorsPanel initial={separators} />}
           {tab === "announcements" && <AnnouncementsPanel />}
           {tab === "audit" && <AuditPanel />}
