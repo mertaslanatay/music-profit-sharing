@@ -97,3 +97,31 @@ export async function supportReady(): Promise<boolean> {
   }
   return supportCache.ready;
 }
+
+/* ------------------------------------------------- kalıcı şarkı bölüşümü */
+
+let songSplitsCache: { ready: boolean; at: number } | null = null;
+
+/**
+ * song_splits tablosu (0013) kurulu mu?
+ *
+ * Aynı dağıtım penceresi sorunu: kod push ile canlıya çıkıyor, migration
+ * insan tarafından sonra çalıştırılıyor. Migration çalışmadan önce şarkı
+ * drawer'ındaki "bölüşümü düzenle" ekranı ham Postgres hatası yerine
+ * "henüz kurulmadı" mesajı göstermeli.
+ */
+export async function songSplitsReady(): Promise<boolean> {
+  const now = Date.now();
+  if (songSplitsCache && (songSplitsCache.ready || now - songSplitsCache.at < RETRY_MS)) {
+    return songSplitsCache.ready;
+  }
+  try {
+    const row = await queryOne<{ t: string | null }>(
+      `select to_regclass('public.song_splits')::text as t`
+    );
+    songSplitsCache = { ready: !!row?.t, at: now };
+  } catch {
+    songSplitsCache = { ready: false, at: now };
+  }
+  return songSplitsCache.ready;
+}

@@ -7,6 +7,7 @@ import { foldKey } from "@/lib/normalize";
 import { money, moneySmart, num, pct, topN } from "@/lib/format";
 import { Bar, Card, Empty, Icon, Td, Th } from "../ui";
 import { SongTransferDrawer } from "../SongTransferDrawer";
+import { SongSplitDrawer } from "../SongSplitDrawer";
 
 type SortKey = "gross" | "quantity" | "song" | "artists";
 
@@ -31,6 +32,8 @@ export function Songs({
   onChanged?: () => void;
 }) {
   const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
+  /** Kalıcı bölüşüm düzenleme drawer'ı — rapor/dönem seçili olması gerekmez. */
+  const [splitOpen, setSplitOpen] = useState<{ id: string; title: string } | null>(null);
   const [sort, setSort] = useState<SortKey>("gross");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [onlyShared, setOnlyShared] = useState(false);
@@ -92,6 +95,14 @@ export function Songs({
           onChanged={onChanged}
         />
       )}
+      {splitOpen && (
+        <SongSplitDrawer
+          songId={splitOpen.id}
+          songTitle={splitOpen.title}
+          onClose={() => setSplitOpen(null)}
+          onChanged={onChanged}
+        />
+      )}
     <Card pad={false} className="overflow-hidden">
       <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
         <div>
@@ -117,7 +128,7 @@ export function Songs({
             <Icon name="split" size={13} className="text-brand-600 shrink-0" />
             <p className="text-[12px] text-ink-600">
               Gelir devri açık — <b>{reportLabel ?? "seçili ödeme partisi"}</b> kapsamında; 🔀
-              işaretli satırlara tıkla.
+              simgesine tıkla. Bölüşümü düzenlemek için satıra tıkla.
             </p>
             {onClearReport && (
               <button
@@ -130,8 +141,9 @@ export function Songs({
           </>
         ) : (
           <p className="text-[12px] text-ink-400">
-            Şarkı bazlı gelir hakkı devri için üstten bir <b>ödeme partisi</b> seç — dönem
-            seçicisi bunun için yeterli değil.
+            Bir şarkının kalıcı bölüşümünü düzenlemek için satıra tıkla. Şarkı bazlı gelir hakkı
+            devri için üstten bir <b>ödeme partisi</b> de seçebilirsin — dönem seçicisi bunun
+            için yeterli değil.
           </p>
         )}
       </div>
@@ -164,20 +176,35 @@ export function Songs({
                 return (
                   <tr
                     key={s.key}
-                    onClick={() => { if (canOpen && s.id) setOpen({ id: s.id, title: s.song }); }}
+                    onClick={() => { if (s.id) setSplitOpen({ id: s.id, title: s.song }); }}
                     className={clsx(
                       "transition-colors",
-                      canOpen && s.id
-                        ? "hover:bg-brand-50/50 cursor-pointer"
-                        : "hover:bg-ink-900/[0.02]"
+                      s.id ? "hover:bg-brand-50/50 cursor-pointer" : "hover:bg-ink-900/[0.02]"
                     )}
                   >
                     <Td className="text-ink-300 tabular text-[12px]">{i + 1}</Td>
                     <Td>
                       <p className="font-medium text-ink-900 truncate max-w-[220px] flex items-center gap-1.5">
                         {s.song}
+                        {s.id && (
+                          <Icon
+                            name="percent"
+                            size={12}
+                            className="text-ink-300 shrink-0"
+                          />
+                        )}
                         {canOpen && s.id && (
-                          <Icon name="split" size={12} className="text-ink-300 shrink-0" />
+                          <button
+                            type="button"
+                            title="Gelir hakkı devri (bu ödeme partisi + dönem için)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpen({ id: s.id as string, title: s.song });
+                            }}
+                            className="shrink-0 text-ink-300 hover:text-brand-600 transition-colors"
+                          >
+                            <Icon name="split" size={12} />
+                          </button>
                         )}
                       </p>
                       {s.album && s.album !== s.song && (

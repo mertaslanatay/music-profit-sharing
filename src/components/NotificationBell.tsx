@@ -23,6 +23,7 @@ const TYPE_ICON: Record<NotificationType, string> = {
   request: "clock",
   account: "users",
   revenue_transfer: "split",
+  song_split: "percent",
   message: "copy",
   system: "alert",
 };

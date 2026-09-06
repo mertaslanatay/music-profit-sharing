@@ -17,6 +17,7 @@ export type NotificationType =
   | "request"            // ödeme isteği durumu
   | "account"            // hesap onayı / askı
   | "revenue_transfer"   // gelir hakkı devri (Faz C)
+  | "song_split"         // kalıcı şarkı bölüşümü düzenlendi (şartname sonrası 5)
   | "message"            // iletişim merkezi (Faz D)
   | "system";
 

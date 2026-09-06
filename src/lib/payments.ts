@@ -312,6 +312,15 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
   }
 
   return transaction(async (c) => {
+    // Bu sanatçı için advisory kilit — src/lib/songSplits.ts'teki setSongSplit
+    // aynı kilidi (aynı hashtext(artistId) anahtarıyla) alıyor. Amaç: bu
+    // fonksiyonun az sonra okuyacağı "kalan tutar" (remaining), eşzamanlı bir
+    // kalıcı bölüşüm düzenlemesinin COMMIT'inden hemen önceki bayat bir
+    // anlık görüntü olmasın — aksi hâlde ikisi de kendi guard'ını geçip
+    // ikisi birden uygulanınca sanatçı payının üstünde ödeme yapılabilirdi.
+    // Tek sanatçı kilitlendiği için sıralama sorunu yok (bkz. songSplits.ts).
+    await c.query(`select pg_advisory_xact_lock(hashtext($1::uuid::text)::bigint)`, [input.artistId]);
+
     // Fazla ödemeyi engelle: her dönem için kalan tutarı kontrol et.
     const rem = await c.query<{ period_id: string; remaining: string }>(
       `select period_id, remaining from v_artist_period_status
