@@ -24,6 +24,25 @@ interface QueueItem {
   message?: string;
 }
 
+interface PreviewData {
+  mapping: { key: string; label: string; required: boolean; header: string | null }[];
+  rowCount: number;
+  negativeRows: number;
+  gross: number;
+  artistCount: number;
+  songCount: number;
+  labelCount: number;
+  periods: {
+    label: string;
+    display: string;
+    gross: number;
+    rowCount: number;
+    existingReports: { id: string; title: string; status: ReportRow["status"]; gross: number }[];
+  }[];
+  sample: { artist: string; parts: string[]; song: string; period: string; net: number }[];
+  duplicateFile: { id: string; title: string; status: ReportRow["status"] } | null;
+}
+
 const STATUS: Record<ReportRow["status"], { label: string; cls: string }> = {
   draft: { label: "Taslak", cls: "bg-accent-amber/15 text-accent-amber" },
   published: { label: "Yayında", cls: "bg-brand-50 text-brand-700" },
@@ -41,6 +60,8 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
   const [deduction, setDeduction] = useState("");
   const [queue, setQueue] = useState<QueueItem[] | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -53,20 +74,46 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
     const files = Array.from(list ?? []);
     if (files.length === 0) return;
     if (files.length === 1) {
-      // Tek dosya: mevcut akış — rapor adı ve kesinti elle girilebilir.
+      // Tek dosya: önce önizleme — kaydetmeden önce satır/sanatçı/dönem
+      // kontrolü (v2 şartnamesi § 4.2, madde 3-4).
       setQueue(null);
       setFile(files[0]);
       setError(null);
       setStats(null);
+      setPreview(null);
       if (!title) setTitle(files[0].name.replace(/\.[^.]+$/, ""));
       return;
     }
     // Birden fazla dosya: toplu yükleme kuyruğuna al. Her dosya kendi raporu
     // olur, adı dosya adından türetilir; kesinti sonradan listeden düzenlenir.
+    // (Toplu kuyruk bilinçli olarak önizlemesiz — hız için tasarlandı; yanlış
+    // giden bir dosya taslak olarak kalır ve listeden silinebilir.)
     setFile(null);
     setStats(null);
+    setPreview(null);
     setError(null);
     setQueue(files.map((f) => ({ file: f, status: "pending" })));
+  };
+
+  const previewFile = async () => {
+    if (!file) return;
+    setPreviewBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await fetch("/api/reports/preview", { method: "POST", body: fd });
+      const j = await res.json();
+      if (!res.ok || j.ok !== true || !Array.isArray(j.periods)) {
+        setError(j.message ?? j.error ?? "Önizleme başarısız.");
+        return;
+      }
+      setPreview(j as PreviewData);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Önizleme başarısız.");
+    } finally {
+      setPreviewBusy(false);
+    }
   };
 
   const uploadOne = async (f: File, force: boolean): Promise<{ ok: true } | { ok: false; duplicate?: boolean; message: string }> => {
@@ -146,6 +193,7 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
       setFile(null);
       setTitle("");
       setDeduction("");
+      setPreview(null);
       if (inputRef.current) inputRef.current.value = "";
       await refresh();
     } catch (e) {
@@ -266,15 +314,137 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 mt-4">
-              <p className="text-[11.5px] text-ink-400">
-                Kesintiyi sonradan da değiştirebilirsin — rapor kilitlenene kadar.
-              </p>
-              <Button variant="primary" onClick={() => upload()} disabled={!file || busy}>
-                <Icon name="upload" size={15} />
-                {busy ? "Yükleniyor…" : "Yükle ve işle"}
-              </Button>
-            </div>
+            {!preview && (
+              <div className="flex items-center justify-between gap-3 mt-4">
+                <p className="text-[11.5px] text-ink-400">
+                  Önce içeriği önizle — hiçbir şey kaydedilmeden kaç satır, kaç sanatçı, hangi
+                  dönem olduğunu gösteririm.
+                </p>
+                <Button variant="primary" onClick={previewFile} disabled={!file || previewBusy}>
+                  <Icon name="search" size={15} />
+                  {previewBusy ? "İnceleniyor…" : "Önizle"}
+                </Button>
+              </div>
+            )}
+
+            {preview && (
+              <div className="mt-4 rounded-xl2 border border-line bg-ink-900/[0.015] p-4 fade-in">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[13.5px] font-semibold text-ink-900">Önizleme</p>
+                    <p className="text-[12px] text-ink-500 mt-0.5">
+                      Henüz hiçbir şey kaydedilmedi — aşağıyı kontrol et.
+                    </p>
+                  </div>
+                  {preview.negativeRows > 0 && (
+                    <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-amber-50 text-accent-amber shrink-0">
+                      {num(preview.negativeRows)} negatif satır (iade/düzeltme)
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Mini label="Toplam brüt" value={money(preview.gross, true)} />
+                  <Mini label="Satır" value={num(preview.rowCount)} />
+                  <Mini label="Sanatçı" value={num(preview.artistCount)} />
+                  <Mini label="Şarkı" value={num(preview.songCount)} />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {preview.periods.map((p) => (
+                    <span
+                      key={p.label}
+                      className={clsx(
+                        "text-[11.5px] px-2.5 py-1 rounded-lg border",
+                        p.existingReports.length > 0
+                          ? "bg-amber-50 text-accent-amber border-amber-200"
+                          : "bg-white text-ink-700 border-line"
+                      )}
+                      title={
+                        p.existingReports.length > 0
+                          ? `Bu dönem için mevcut: ${p.existingReports
+                              .map((e) => `${e.title} (${STATUS[e.status].label})`)
+                              .join(", ")}`
+                          : undefined
+                      }
+                    >
+                      {p.display} · {money(p.gross, true)}
+                      {p.existingReports.length > 0 && " ⚠"}
+                    </span>
+                  ))}
+                </div>
+
+                {preview.periods.some((p) => p.existingReports.length > 0) && (
+                  <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2.5">
+                    <Icon name="alert" size={15} className="text-accent-amber mt-0.5 shrink-0" />
+                    <p className="text-[12px] text-accent-amber leading-relaxed">
+                      Bu dosyadaki bir veya daha fazla dönem için zaten rapor var (yukarıda
+                      işaretli). Devam edersen bu dönem için EK bir rapor oluşturulur — mevcut
+                      rapor değişmez. Yanlışlıkla ikinci kez yüklüyorsan Vazgeç'e bas.
+                    </p>
+                  </div>
+                )}
+
+                {preview.duplicateFile && (
+                  <div className="mt-3 rounded-xl bg-rose-50 border border-rose-200 p-3 flex items-start gap-2.5">
+                    <Icon name="alert" size={15} className="text-accent-rose mt-0.5 shrink-0" />
+                    <p className="text-[12px] text-accent-rose leading-relaxed">
+                      Bu dosyanın birebir aynısı daha önce &ldquo;{preview.duplicateFile.title}&rdquo;
+                      adıyla yüklenmiş ({STATUS[preview.duplicateFile.status].label}).
+                    </p>
+                  </div>
+                )}
+
+                <details className="mt-3">
+                  <summary className="text-[11.5px] text-ink-500 cursor-pointer hover:text-ink-800 select-none">
+                    İlk birkaç satırda sanatçı ayrıştırması nasıl görünüyor?
+                  </summary>
+                  <div className="mt-2 rounded-xl border border-line divide-y divide-line overflow-hidden">
+                    {preview.sample.map((s, i) => (
+                      <div key={i} className="px-3 py-2 text-[12px]">
+                        <p className="text-ink-900">{s.artist}</p>
+                        <p className="text-ink-400 mt-0.5">
+                          → {s.parts.join(" · ")} · {s.song} · {s.period} · {money(s.net)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+
+                <details className="mt-2">
+                  <summary className="text-[11.5px] text-ink-500 cursor-pointer hover:text-ink-800 select-none">
+                    Kolon eşleşmesi hangi başlığı hangi alana bağladı?
+                  </summary>
+                  <div className="mt-2 rounded-xl border border-line divide-y divide-line overflow-hidden">
+                    {preview.mapping.map((m) => (
+                      <div key={m.key} className="flex items-center justify-between gap-3 px-3 py-1.5 text-[12px]">
+                        <span className="text-ink-500">
+                          {m.label}
+                          {m.required && <span className="text-accent-rose"> *</span>}
+                        </span>
+                        <span className={clsx("truncate max-w-[220px]", m.header ? "text-ink-900" : "text-ink-300")}>
+                          {m.header ?? "eşleşmedi"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+
+                <div className="flex items-center justify-end gap-2.5 mt-4">
+                  <button
+                    onClick={() => { setPreview(null); setFile(null); setTitle(""); setDeduction(""); if (inputRef.current) inputRef.current.value = ""; }}
+                    disabled={busy}
+                    className="text-[12.5px] text-ink-500 hover:text-ink-900 transition-colors disabled:opacity-40"
+                  >
+                    Vazgeç
+                  </button>
+                  <Button variant="primary" onClick={() => upload()} disabled={busy}>
+                    <Icon name="upload" size={15} />
+                    {busy ? "Kaydediliyor…" : "Onayla ve kaydet"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </>
         )}
 

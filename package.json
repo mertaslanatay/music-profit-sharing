@@ -19,7 +19,8 @@
     "uitest": "node scripts/uitest.mjs",
     "verify:split": "tsx scripts/verify-split.mts",
     "verify:transfers": "tsx scripts/verify-transfers.mts",
-    "verify:support": "tsx scripts/verify-support.mts"
+    "verify:support": "tsx scripts/verify-support.mts",
+    "verify:preview": "tsx scripts/verify-preview.mts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
