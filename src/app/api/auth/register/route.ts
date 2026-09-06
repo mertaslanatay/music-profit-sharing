@@ -3,6 +3,7 @@ import { query, queryOne } from "@/lib/db";
 import { audit, rateLimit } from "@/lib/access";
 import { supabaseAnon, authConfigured } from "@/lib/supabase/server";
 import { notifyMany, adminUserIds } from "@/lib/notify";
+import { countryByCode, normalizePhoneDigits, isValidPhoneDigits } from "@/lib/countries";
 
 export const runtime = "nodejs";
 
@@ -40,12 +41,14 @@ export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "bilinmiyor";
   const body = await req.json().catch(() => ({}));
 
-  const email      = clean(body.email, 254).toLowerCase();
-  const firstName  = clean(body.firstName, 60);
-  const lastName   = clean(body.lastName, 60);
-  const artistName = clean(body.artistName, 120);
-  const password   = typeof body.password === "string" ? body.password : "";
-  const kvkk       = body.kvkk === true;
+  const email       = clean(body.email, 254).toLowerCase();
+  const firstName   = clean(body.firstName, 60);
+  const lastName    = clean(body.lastName, 60);
+  const artistName  = clean(body.artistName, 120);
+  const password    = typeof body.password === "string" ? body.password : "";
+  const kvkk        = body.kvkk === true;
+  const phoneCountryRaw = clean(body.phoneCountry, 2).toUpperCase();
+  const phoneDigitsRaw  = normalizePhoneDigits(clean(body.phone, 30));
 
   // --- hız sınırı: aynı IP'den saatte 5 kayıt ---
   const rl = await rateLimit(`register:${ip}`, 5, 3600);
@@ -63,6 +66,22 @@ export async function POST(req: Request) {
   const pw = passwordProblem(password);
   if (pw) return NextResponse.json({ error: pw }, { status: 400 });
 
+  // --- telefon: isteğe bağlı. Ülke seçimi formda her zaman bir varsayılana
+  // sahiptir (ör. "TR"), bu yüzden "girildi mi" kararını SADECE numara
+  // basamaklarının varlığına göre veririz — yoksa boş bırakan herkes
+  // (ülke alanı dolu göründüğü için) hatalı biçimde reddedilir.
+  let phone: string | null = null;
+  let phoneCountry: string | null = null;
+  if (phoneDigitsRaw) {
+    const country = countryByCode(phoneCountryRaw);
+    if (!country) return NextResponse.json({ error: "Geçerli bir ülke seç." }, { status: 400 });
+    if (!isValidPhoneDigits(phoneDigitsRaw)) {
+      return NextResponse.json({ error: "Telefon numarasını kontrol et." }, { status: 400 });
+    }
+    phone = phoneDigitsRaw;
+    phoneCountry = country.code;
+  }
+
   // --- e-posta zaten kayıtlı mı ---
   const existing = await queryOne<{ id: string; status: string }>(
     `select id, status from users where lower(email) = $1`, [email]
@@ -74,13 +93,29 @@ export async function POST(req: Request) {
   }
 
   // --- profil satırı (önce bizde, sonra Supabase'de) ---
-  const created = await queryOne<{ id: string }>(
-    `insert into users (email, first_name, last_name, artist_name, role, status, kvkk_consent_at)
-     values ($1,$2,$3,$4,'artist','pending', now())
-     on conflict do nothing
-     returning id`,
-    [email, firstName, lastName, artistName || null]
-  );
+  // Kod dağıtımı ile migration'ın (Supabase SQL Editor'de elle çalıştırılıyor)
+  // hangisinin önce yetişeceği garanti değil; phone/phone_country kolonları
+  // henüz yoksa kayıt tamamen kırılmasın diye o kolonlar olmadan tekrar denenir.
+  let created: { id: string } | null;
+  try {
+    created = await queryOne<{ id: string }>(
+      `insert into users (email, first_name, last_name, artist_name, role, status, kvkk_consent_at, phone, phone_country)
+       values ($1,$2,$3,$4,'artist','pending', now(), $5, $6)
+       on conflict do nothing
+       returning id`,
+      [email, firstName, lastName, artistName || null, phone, phoneCountry]
+    );
+  } catch (e) {
+    const code = (e as { code?: string } | null)?.code;
+    if (code !== "42703") throw e; // 42703 = undefined_column — başka hatayı yutmayız
+    created = await queryOne<{ id: string }>(
+      `insert into users (email, first_name, last_name, artist_name, role, status, kvkk_consent_at)
+       values ($1,$2,$3,$4,'artist','pending', now())
+       on conflict do nothing
+       returning id`,
+      [email, firstName, lastName, artistName || null]
+    );
+  }
   if (!created) return NextResponse.json({ ok: true, duplicate: true });
 
   // --- Supabase Auth kaydı ve doğrulama e-postası ---

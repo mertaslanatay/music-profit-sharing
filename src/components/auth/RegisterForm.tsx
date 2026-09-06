@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Alert, Field, buttonClass, inputClass } from "./AuthShell";
+import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
 
 /** Şifre gücü — sunucudaki kuralın aynısı, kullanıcıya anında geri bildirim. */
 function strength(p: string): { score: 0 | 1 | 2 | 3; text: string } {
@@ -18,6 +19,7 @@ function strength(p: string): { score: 0 | 1 | 2 | 3; text: string } {
 export function RegisterForm() {
   const [f, setF] = useState({
     firstName: "", lastName: "", artistName: "", email: "", password: "", password2: "",
+    phone: "", phoneCountry: DEFAULT_COUNTRY,
   });
   const [kvkk, setKvkk] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -25,6 +27,8 @@ export function RegisterForm() {
   const [done, setDone] = useState(false);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setF((p) => ({ ...p, [k]: e.target.value }));
+  const setSel = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLSelectElement>) =>
     setF((p) => ({ ...p, [k]: e.target.value }));
 
   const st = useMemo(() => strength(f.password), [f.password]);
@@ -94,6 +98,30 @@ export function RegisterForm() {
                value={f.email} onChange={set("email")} placeholder="ornek@eposta.com" />
       </Field>
 
+      <Field label="İletişim numarası" hint="İsteğe bağlı — sana ulaşmamız gerektiğinde kullanılır.">
+        <div className="flex gap-2">
+          <select
+            className={inputClass + " w-[128px] shrink-0"}
+            value={f.phoneCountry}
+            onChange={setSel("phoneCountry")}
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.dial} {c.code}
+              </option>
+            ))}
+          </select>
+          <input
+            type="tel"
+            autoComplete="tel-national"
+            className={inputClass}
+            value={f.phone}
+            onChange={set("phone")}
+            placeholder="5xx xxx xx xx"
+          />
+        </div>
+      </Field>
+
       <Field label="Şifre" hint="En az 10 karakter, en az bir rakam.">
         <input type="password" required autoComplete="new-password" className={inputClass}
                value={f.password} onChange={set("password")} />
@@ -122,9 +150,9 @@ export function RegisterForm() {
         <input type="checkbox" checked={kvkk} onChange={(e) => setKvkk(e.target.checked)}
                className="mt-0.5 w-4 h-4 rounded border-line accent-brand-600 shrink-0" />
         <span className="text-[12px] text-ink-500 leading-relaxed">
-          Ad, soyad, e-posta ve banka bilgilerimin telif ödemelerinin yürütülmesi amacıyla
-          işlenmesini kabul ediyorum. Verilerim yalnızca bu amaçla kullanılır ve talebim
-          hâlinde silinir.
+          Ad, soyad, e-posta, (varsa) telefon numarası ve banka bilgilerimin telif
+          ödemelerinin yürütülmesi amacıyla işlenmesini kabul ediyorum. Verilerim yalnızca
+          bu amaçla kullanılır ve talebim hâlinde silinir.
         </span>
       </label>
 
