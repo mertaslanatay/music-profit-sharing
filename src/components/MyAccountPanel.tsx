@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import type { BankAccount, BankChangeRequestRow, LedgerSummary, PaymentRow, PeriodStatus } from "@/lib/payments";
 import { money, amountIn } from "@/lib/format";
 import { Button, Card, Empty, Icon, Stat } from "./ui";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
-
-const tl = (v: number) =>
-  `₺${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
+import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
+import { AccountSidebar, type AccountTabDef } from "./AccountSidebar";
 
 const dateTr = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -16,8 +15,22 @@ const dateTr = (iso: string | null) =>
 const maskIban = (iban: string) =>
   iban.length > 8 ? `${iban.slice(0, 4)} •••• •••• ${iban.slice(-4)}` : iban;
 
+type Tab = "overview" | "payments" | "bank" | "contact";
+
+const TITLES: Record<Tab, { title: string; sub: string }> = {
+  overview: { title: "Genel Bakış", sub: "Hakedişin ve ödeme talebin" },
+  payments: { title: "Ödemeler", sub: "Dönem dökümü ve ödeme geçmişi" },
+  bank: { title: "Banka", sub: "Ödemenin gideceği hesap bilgisi" },
+  contact: { title: "İletişim Tercihleri", sub: "Telefon ve e-posta bildirim ayarların" },
+};
+
+/** Sanatçı hesap paneli — AdminTabs ile aynı sol menülü sekme yapısı
+ * (Genel Bakış / Ödemeler / Banka / İletişim Tercihleri). Sekmeler arası
+ * durum burada tutulur; her sekme kendi kartlarını render eder. */
 export function MyAccountPanel({
   artistId,
+  artistName,
+  fullName,
   summary: initialSummary,
   periods,
   payments,
@@ -26,12 +39,14 @@ export function MyAccountPanel({
 }: {
   artistId: string;
   artistName: string;
+  fullName: string;
   summary: LedgerSummary;
   periods: PeriodStatus[];
   payments: PaymentRow[];
   bank: BankAccount | null;
   openBankRequest: BankChangeRequestRow | null;
 }) {
+  const [tab, setTab] = useState<Tab>("overview");
   const [summary, setSummary] = useState(initialSummary);
   const [bank, setBank] = useState(initialBank);
   const [openBankRequest, setOpenBankRequest] = useState(initialOpenBankRequest);
@@ -61,8 +76,77 @@ export function MyAccountPanel({
     } finally { setReqBusy(false); }
   };
 
+  const tabs: AccountTabDef[] = [
+    { key: "overview", label: "Genel Bakış", icon: "dashboard" },
+    { key: "payments", label: "Ödemeler", icon: "wallet" },
+    { key: "bank", label: "Banka", icon: "bank" },
+    { key: "contact", label: "İletişim Tercihleri", icon: "phone" },
+  ];
+  const meta = TITLES[tab];
+
   return (
-    <div className="space-y-4">
+    <main className="flex h-screen overflow-hidden">
+      <AccountSidebar
+        tabs={tabs}
+        active={tab}
+        onTab={(k) => setTab(k as Tab)}
+        artistName={artistName}
+        fullName={fullName}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="bg-card border-b border-line px-6 py-3.5 shrink-0 no-print">
+          <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
+          <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+        </header>
+
+        <div className="flex-1 overflow-y-auto scroll-thin p-6">
+          <div className="max-w-3xl space-y-4">
+            {tab === "overview" && (
+              <OverviewTab
+                summary={summary}
+                reqBusy={reqBusy}
+                reqErr={reqErr}
+                reqOk={reqOk}
+                onRequest={requestPayment}
+              />
+            )}
+
+            {tab === "payments" && <PaymentsTab periods={periods} payments={payments} />}
+
+            {tab === "bank" && (
+              <BankTab
+                artistId={artistId}
+                bank={bank}
+                openBankRequest={openBankRequest}
+                showBankForm={showBankForm}
+                onShowForm={() => setShowBankForm(true)}
+                onCloseForm={() => setShowBankForm(false)}
+                onSubmitted={async () => { setShowBankForm(false); await refreshBank(); }}
+              />
+            )}
+
+            {tab === "contact" && <ContactPrefsTab />}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/* ------------------------------------------------------------ genel bakış */
+
+function OverviewTab({
+  summary, reqBusy, reqErr, reqOk, onRequest,
+}: {
+  summary: LedgerSummary;
+  reqBusy: boolean;
+  reqErr: string | null;
+  reqOk: boolean;
+  onRequest: () => void;
+}) {
+  return (
+    <>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Stat label="Toplam hakediş" value={money(summary.earned)} sub="tüm dönemler, net" />
         <Stat label="Ödenen" value={money(summary.paid)} tone="up" />
@@ -71,7 +155,6 @@ export function MyAccountPanel({
           badge={summary.hasOpenRequest ? "istek gönderildi" : undefined} />
       </div>
 
-      {/* --------------------------------------------------- ödeme talebi */}
       <Card>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -103,70 +186,22 @@ export function MyAccountPanel({
             )}
           </div>
           {!summary.hasOpenRequest && summary.balance > 0.005 && (
-            <Button variant="primary" onClick={requestPayment} disabled={reqBusy}>
+            <Button variant="primary" onClick={onRequest} disabled={reqBusy}>
               <Icon name="wallet" size={15} />
               {reqBusy ? "Gönderiliyor…" : "Ödeme talebi gönder"}
             </Button>
           )}
         </div>
       </Card>
+    </>
+  );
+}
 
-      {/* -------------------------------------------------- banka bilgisi */}
-      <Card>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">
-              Banka bilgisi
-            </p>
-            {bank?.iban ? (
-              <>
-                <p className="text-[13.5px] font-medium text-ink-900">{bank.bankName}</p>
-                <p className="text-[13px] text-ink-500 font-mono mt-0.5">{maskIban(bank.iban)}</p>
-                <p className="text-[12px] text-ink-400 mt-1">
-                  {bank.accountHolder} · {bank.currency}
-                </p>
-              </>
-            ) : (
-              <p className="text-[13px] text-accent-amber">Henüz banka bilgin kayıtlı değil.</p>
-            )}
-            <p className="text-[11.5px] text-ink-400 mt-2 leading-relaxed max-w-md">
-              Güvenlik nedeniyle banka bilgini doğrudan değiştiremezsin — değişiklik isteği
-              gönderirsin, yönetici onayladığında geçerli olur.
-            </p>
-          </div>
-          {!openBankRequest && (
-            <Button onClick={() => setShowBankForm(true)}>
-              <Icon name="bank" size={15} /> Değişiklik iste
-            </Button>
-          )}
-        </div>
+/* --------------------------------------------------------------- ödemeler */
 
-        {openBankRequest && (
-          <div className="mt-3.5 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-3 flex items-start gap-2.5">
-            <Icon name="alert" size={15} className="text-accent-amber mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[12.5px] text-amber-900">
-                <b>{dateTr(openBankRequest.createdAt)}</b> tarihinde gönderdiğin değişiklik isteği
-                yönetici onayını bekliyor.
-              </p>
-              <p className="text-[11.5px] text-amber-800/80 mt-1 font-mono">
-                {openBankRequest.bankName} · {maskIban(openBankRequest.iban)}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {showBankForm && (
-          <BankChangeForm
-            artistId={artistId}
-            current={bank}
-            onClose={() => setShowBankForm(false)}
-            onSubmitted={async () => { setShowBankForm(false); await refreshBank(); }}
-          />
-        )}
-      </Card>
-
-      {/* -------------------------------------------------- dönem dökümü */}
+function PaymentsTab({ periods, payments }: { periods: PeriodStatus[]; payments: PaymentRow[] }) {
+  return (
+    <>
       <Card>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-3">
           Dönem dökümü
@@ -196,7 +231,6 @@ export function MyAccountPanel({
         )}
       </Card>
 
-      {/* -------------------------------------------------- ödeme geçmişi */}
       {payments.length > 0 && (
         <Card>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-3">
@@ -229,11 +263,79 @@ export function MyAccountPanel({
           </div>
         </Card>
       )}
-    </div>
+    </>
   );
 }
 
-/* --------------------------------------------- banka değişikliği formu */
+/* ------------------------------------------------------------------ banka */
+
+function BankTab({
+  artistId, bank, openBankRequest, showBankForm, onShowForm, onCloseForm, onSubmitted,
+}: {
+  artistId: string;
+  bank: BankAccount | null;
+  openBankRequest: BankChangeRequestRow | null;
+  showBankForm: boolean;
+  onShowForm: () => void;
+  onCloseForm: () => void;
+  onSubmitted: () => void;
+}) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">
+            Banka bilgisi
+          </p>
+          {bank?.iban ? (
+            <>
+              <p className="text-[13.5px] font-medium text-ink-900">{bank.bankName}</p>
+              <p className="text-[13px] text-ink-500 font-mono mt-0.5">{maskIban(bank.iban)}</p>
+              <p className="text-[12px] text-ink-400 mt-1">
+                {bank.accountHolder} · {bank.currency}
+              </p>
+            </>
+          ) : (
+            <p className="text-[13px] text-accent-amber">Henüz banka bilgin kayıtlı değil.</p>
+          )}
+          <p className="text-[11.5px] text-ink-400 mt-2 leading-relaxed max-w-md">
+            Güvenlik nedeniyle banka bilgini doğrudan değiştiremezsin — değişiklik isteği
+            gönderirsin, yönetici onayladığında geçerli olur.
+          </p>
+        </div>
+        {!openBankRequest && (
+          <Button onClick={onShowForm}>
+            <Icon name="bank" size={15} /> Değişiklik iste
+          </Button>
+        )}
+      </div>
+
+      {openBankRequest && (
+        <div className="mt-3.5 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-3 flex items-start gap-2.5">
+          <Icon name="alert" size={15} className="text-accent-amber mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[12.5px] text-amber-900">
+              <b>{dateTr(openBankRequest.createdAt)}</b> tarihinde gönderdiğin değişiklik isteği
+              yönetici onayını bekliyor.
+            </p>
+            <p className="text-[11.5px] text-amber-800/80 mt-1 font-mono">
+              {openBankRequest.bankName} · {maskIban(openBankRequest.iban)}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showBankForm && (
+        <BankChangeForm
+          artistId={artistId}
+          current={bank}
+          onClose={onCloseForm}
+          onSubmitted={onSubmitted}
+        />
+      )}
+    </Card>
+  );
+}
 
 function BankChangeForm({
   artistId, current, onClose, onSubmitted,
@@ -319,5 +421,173 @@ function Field({
         )}
       />
     </div>
+  );
+}
+
+/* ---------------------------------------------------- İletişim tercihleri */
+
+interface ContactPrefs {
+  phone: string;
+  phoneCountry: string;
+  notifyEmailSupport: boolean;
+  notifyEmailPayout: boolean;
+  notifyEmailAnnouncement: boolean;
+}
+
+function ContactPrefsTab() {
+  const [loading, setLoading] = useState(true);
+  const [prefs, setPrefs] = useState<ContactPrefs>({
+    phone: "", phoneCountry: DEFAULT_COUNTRY,
+    notifyEmailSupport: false, notifyEmailPayout: false, notifyEmailAnnouncement: false,
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/account")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        setPrefs({
+          phone: j.phone ?? "",
+          phoneCountry: j.phoneCountry ?? DEFAULT_COUNTRY,
+          notifyEmailSupport: !!j.notifyEmailSupport,
+          notifyEmailPayout: !!j.notifyEmailPayout,
+          notifyEmailAnnouncement: !!j.notifyEmailAnnouncement,
+        });
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const set = <K extends keyof ContactPrefs>(k: K, v: ContactPrefs[K]) => {
+    setPrefs((p) => ({ ...p, [k]: v }));
+    setOk(false);
+  };
+
+  const save = async () => {
+    setBusy(true); setErr(null); setOk(false);
+    try {
+      const res = await fetch("/api/account", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(prefs),
+      });
+      const j = await res.json();
+      if (!res.ok) { setErr(j.error ?? "Kaydedilemedi."); return; }
+      setPrefs({
+        phone: j.phone ?? "", phoneCountry: j.phoneCountry ?? DEFAULT_COUNTRY,
+        notifyEmailSupport: !!j.notifyEmailSupport,
+        notifyEmailPayout: !!j.notifyEmailPayout,
+        notifyEmailAnnouncement: !!j.notifyEmailAnnouncement,
+      });
+      setOk(true);
+    } catch {
+      setErr("Bağlantı kurulamadı.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <p className="text-[13px] text-ink-400">Yükleniyor…</p>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-3">
+          İletişim numarası
+        </p>
+        <p className="text-[12px] text-ink-500 mb-3 leading-relaxed">
+          İsteğe bağlı — sana ulaşmamız gerektiğinde kullanılır.
+        </p>
+        <div className="flex gap-2 max-w-md">
+          <select
+            className="rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors w-[128px] shrink-0"
+            value={prefs.phoneCountry}
+            onChange={(e) => set("phoneCountry", e.target.value)}
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.dial} {c.code}</option>
+            ))}
+          </select>
+          <input
+            type="tel"
+            className="flex-1 rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
+            value={prefs.phone}
+            onChange={(e) => set("phone", e.target.value)}
+            placeholder="5xx xxx xx xx"
+          />
+        </div>
+      </Card>
+
+      <Card>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-3">
+          E-posta bildirimleri
+        </p>
+        <p className="text-[12px] text-ink-500 mb-3 leading-relaxed">
+          Panel içi bildirimlerin her zaman gelir. Aşağıdakileri açarsan, aynı olaylar için
+          ayrıca e-posta da alırsın.
+        </p>
+        <div className="space-y-1">
+          <PrefToggle
+            label="Destek konuşmama cevap geldiğinde"
+            checked={prefs.notifyEmailSupport}
+            onChange={(v) => set("notifyEmailSupport", v)}
+          />
+          <PrefToggle
+            label="Yeni bir ödeme partisi yayınlandığında"
+            checked={prefs.notifyEmailPayout}
+            onChange={(v) => set("notifyEmailPayout", v)}
+          />
+          <PrefToggle
+            label="Yeni bir duyuru yayınlandığında"
+            checked={prefs.notifyEmailAnnouncement}
+            onChange={(v) => set("notifyEmailAnnouncement", v)}
+          />
+        </div>
+      </Card>
+
+      {err && (
+        <p className="text-[12.5px] text-accent-rose flex items-start gap-1.5">
+          <Icon name="alert" size={14} className="mt-0.5 shrink-0" /> {err}
+        </p>
+      )}
+      {ok && (
+        <p className="text-[12.5px] text-brand-600 flex items-start gap-1.5">
+          <Icon name="check" size={14} className="mt-0.5 shrink-0" /> Kaydedildi.
+        </p>
+      )}
+
+      <div className="flex justify-end">
+        <Button variant="primary" onClick={save} disabled={busy}>
+          {busy ? "Kaydediliyor…" : "Kaydet"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function PrefToggle({
+  label, checked, onChange,
+}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-ink-900/[0.02] cursor-pointer transition-colors">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 rounded border-line accent-brand-600 shrink-0"
+      />
+      <span className="text-[13px] text-ink-700">{label}</span>
+    </label>
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { emailAnnouncement } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
 
     await logAction(admin, publish ? "announcement_published" : "announcement_created",
       `announcement:${row?.id}`, { title });
+    if (publish) await emailAnnouncement(title, body, admin?.userId ?? null);
     return NextResponse.json({ ok: true, id: row?.id });
   } catch (e) {
     return denyResponse(e);

@@ -14,6 +14,8 @@
  * bir e-posta sağlayıcısı arızası yönetim panelini çalışmaz hâle getirirdi.
  */
 
+import { query } from "./db";
+
 const ENDPOINT = "https://api.resend.com/emails";
 
 const KEY = () => process.env.RESEND_API_KEY ?? "";
@@ -160,4 +162,99 @@ export async function sendApprovalMail(to: string, firstName?: string | null): P
     subject: "Hesabın onaylandı — M4NM Pulse",
     html,
   });
+}
+
+const FOOTNOTE_PREF =
+  "Bu e-postayı hesap ayarlarındaki İletişim Tercihleri'nden kapatabilirsin.";
+
+/** Destek konuşmasına Label ekibi cevap verdiğinde — yalnızca kullanıcı bunu
+ * İletişim Tercihleri'nden açtıysa gönderilir (bkz. lib/notify.ts çağıranı). */
+export async function sendSupportReplyMail(
+  to: string, subject: string, snippet: string
+): Promise<MailResult> {
+  const html = mailLayout({
+    preheader: "Destek konuşmana yeni bir cevap geldi.",
+    heading: "Destek konuşmana cevap geldi",
+    intro: `<b>${esc(subject)}</b> konusundaki konuşmana Label ekibi cevap verdi: "${esc(snippet.slice(0, 200))}"`,
+    ctaLabel: "Konuşmayı aç",
+    ctaUrl: `${SITE()}/destek`,
+    footnote: FOOTNOTE_PREF,
+  });
+  return sendMail({ to, subject: "Destek konuşmana cevap geldi — M4NM Pulse", html });
+}
+
+/** Yeni ödeme partisi yayınlandığında — hedef kitle notify_email_payout=true olanlar. */
+export async function sendPayoutBatchMail(to: string, batchLabel: string): Promise<MailResult> {
+  const html = mailLayout({
+    preheader: "Yeni bir ödeme partisi yayınlandı.",
+    heading: "Yeni ödeme partisi yayınlandı",
+    intro: `<b>${esc(batchLabel)}</b> yayınlandı. Bu dönemdeki hakedişini panelinden görebilirsin.`,
+    ctaLabel: "Panele git",
+    ctaUrl: `${SITE()}/?v=payouts`,
+    footnote: FOOTNOTE_PREF,
+  });
+  return sendMail({ to, subject: "Yeni ödeme partisi yayınlandı — M4NM Pulse", html });
+}
+
+/** Yeni duyuru yayınlandığında — hedef kitle notify_email_announcement=true olanlar. */
+export async function sendAnnouncementMail(
+  to: string, title: string, bodySnippet: string
+): Promise<MailResult> {
+  const html = mailLayout({
+    preheader: "Yeni bir duyuru yayınlandı.",
+    heading: esc(title.slice(0, 160)),
+    intro: esc(bodySnippet.slice(0, 400)),
+    ctaLabel: "Panele git",
+    ctaUrl: `${SITE()}/`,
+    footnote: FOOTNOTE_PREF,
+  });
+  return sendMail({ to, subject: `${title.slice(0, 140)} — M4NM Pulse`, html });
+}
+
+/**
+ * Duyuru yayınlandığında İletişim Tercihleri'nden açmış aktif kullanıcılara
+ * e-posta gönderir. Admin/muhasebe dışı hedef kitle (artist/label_manager/
+ * accountant); yayınlayan admin'in kendisi hariç tutulur. Hem yeni duyuru
+ * oluşturup doğrudan yayınlama (POST) hem de sonradan yayınlama (PATCH)
+ * aynı fonksiyonu çağırır.
+ */
+export async function emailAnnouncement(
+  title: string, body: string, excludeUserId: string | null
+): Promise<void> {
+  if (!mailConfigured()) return;
+  try {
+    const recipients = await query<{ email: string }>(
+      `select email from users
+       where status = 'active' and role in ('artist','label_manager','accountant')
+         and notify_email_announcement = true
+         and ($1::uuid is null or id != $1)`,
+      [excludeUserId]
+    );
+    await sendMailBatch(recipients.map((r) => () => sendAnnouncementMail(r.email, title, body)));
+  } catch {
+    /* e-posta asıl işlemi düşürmez */
+  }
+}
+
+/**
+ * Birden çok alıcıya e-posta göndermeyi sınırlı eşzamanlılıkla yapar.
+ *
+ * TASARIM KURALI (yukarıdaki ile aynı): tek bir alıcıya gönderim başarısız
+ * olursa diğerlerini etkilemez, asıl işlemi (ör. duyuru yayınlama) düşürmez.
+ * Her iş kendi hatasını yutar.
+ */
+export async function sendMailBatch(
+  jobs: Array<() => Promise<MailResult>>,
+  concurrency = 5
+): Promise<{ sent: number; failed: number }> {
+  let sent = 0, failed = 0;
+  for (let i = 0; i < jobs.length; i += concurrency) {
+    const chunk = jobs.slice(i, i + concurrency);
+    const results = await Promise.allSettled(chunk.map((job) => job()));
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.ok) sent++;
+      else failed++;
+    }
+  }
+  return { sent, failed };
 }

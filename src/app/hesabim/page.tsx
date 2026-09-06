@@ -74,38 +74,16 @@ export default async function AccountPage() {
   });
 
   return (
-    <main className="min-h-screen bg-canvas">
-      <header className="bg-card border-b border-line px-6 py-3.5 flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center shrink-0 p-1.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
-          </div>
-          <div>
-            <h1 className="text-[16px] font-semibold text-ink-900 leading-tight">Hesabım</h1>
-            <p className="text-[11.5px] text-ink-400 leading-tight">{data.artistName}</p>
-          </div>
-        </div>
-        <Link
-          href="/"
-          className="ml-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03] transition-colors"
-        >
-          <Icon name="back" size={15} /> Panele dön
-        </Link>
-      </header>
-
-      <div className="p-6 max-w-4xl mx-auto">
-        <MyAccountPanel
-          artistId={artistId}
-          artistName={data.artistName}
-          summary={data.ledger.summary}
-          periods={data.ledger.periods}
-          payments={data.ledger.payments}
-          bank={data.bank}
-          openBankRequest={data.openBankRequest}
-        />
-      </div>
-    </main>
+    <MyAccountPanel
+      artistId={artistId}
+      artistName={data.artistName}
+      fullName={viewer.fullName}
+      summary={data.ledger.summary}
+      periods={data.ledger.periods}
+      payments={data.ledger.payments}
+      bank={data.bank}
+      openBankRequest={data.openBankRequest}
+    />
   );
 }
 

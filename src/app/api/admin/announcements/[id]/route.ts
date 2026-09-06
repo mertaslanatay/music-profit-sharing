@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { emailAnnouncement } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const admin = await requireAdmin("announcement_update_denied");
     const { id } = await params;
     const b = await req.json().catch(() => ({}));
+
+    // Yayınlama e-postasını yalnızca YAYINSIZ → YAYINDA geçişinde göndermek
+    // için, güncellemeden önceki durumu ayrıca çekiyoruz.
+    const before = await queryOne<{ published_at: string | null }>(
+      `select published_at from announcements where id = $1`, [id]
+    );
+    if (!before) return NextResponse.json({ error: "Duyuru bulunamadı." }, { status: 404 });
 
     const sets: string[] = [];
     const vals: unknown[] = [id];
@@ -35,9 +43,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
     }
     sets.push(`updated_at = now()`);
 
-    const row = await queryOne<{ id: string; title: string; published_at: string | null }>(
+    const row = await queryOne<{ id: string; title: string; body: string; published_at: string | null }>(
       `update announcements set ${sets.join(", ")} where id = $1
-       returning id, title, published_at`,
+       returning id, title, body, published_at`,
       vals
     );
     if (!row) return NextResponse.json({ error: "Duyuru bulunamadı." }, { status: 404 });
@@ -45,6 +53,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
     await logAction(admin, "announcement_updated", `announcement:${id}`, {
       title: row.title, published: !!row.published_at,
     });
+
+    // İlk yayınlamada e-posta gider; zaten yayındaki bir duyuru metni
+    // düzeltilip tekrar publish:true gönderilirse ikinci kez gitmez.
+    if (b.publish === true && !before.published_at && row.published_at) {
+      await emailAnnouncement(row.title, row.body, admin?.userId ?? null);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return denyResponse(e);

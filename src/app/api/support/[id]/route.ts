@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { queryOne } from "@/lib/db";
 import { requireViewer, denyResponse, logAction } from "@/lib/guard";
 import { isAdmin } from "@/lib/access";
 import { getThread, addReply, setThreadStatus, threadOwner, type ThreadStatus } from "@/lib/support";
 import { notify, notifyMany, adminUserIds } from "@/lib/notify";
+import { mailConfigured, sendSupportReplyMail } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -83,6 +85,16 @@ export async function POST(req: Request, { params }: Ctx) {
         actionUrl: "/destek",
         createdBy: viewer.userId,
       });
+      // E-posta yalnızca kullanıcı İletişim Tercihleri'nden açtıysa gider —
+      // uygulama içi bildirim (yukarıda) her zaman gönderilir, bu yalnızca ek.
+      if (mailConfigured()) {
+        try {
+          const pref = await queryOne<{ email: string; notify_email_support: boolean }>(
+            `select email, notify_email_support from users where id = $1`, [owner.userId]
+          );
+          if (pref?.notify_email_support) await sendSupportReplyMail(pref.email, owner.subject, body);
+        } catch { /* e-posta asıl işlemi düşürmez */ }
+      }
     } else {
       // İşlemi yapan kişiye kendi mesajının bildirimi gitmez.
       const hedef = (await adminUserIds()).filter((uid) => uid !== viewer.userId);

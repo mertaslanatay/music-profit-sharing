@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 import { notifyMany, usersInReport } from "@/lib/notify";
+import { mailConfigured, sendPayoutBatchMail, sendMailBatch } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -70,6 +71,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         actionUrl: "/?v=payouts",
         createdBy: admin?.userId ?? null,
       });
+      // E-posta yalnızca İletişim Tercihleri'nden açan kullanıcılara gider —
+      // uygulama içi bildirim (yukarıda) her zaman gönderilir.
+      if (mailConfigured() && targets.length > 0) {
+        try {
+          const recipients = await query<{ email: string }>(
+            `select email from users
+             where id = any($1::uuid[]) and status = 'active' and notify_email_payout = true`,
+            [targets]
+          );
+          await sendMailBatch(recipients.map((r) => () => sendPayoutBatchMail(r.email, adi)));
+        } catch { /* e-posta asıl işlemi düşürmez */ }
+      }
     }
 
     const updated = await queryOne(`select * from reports where id = $1`, [id]);
