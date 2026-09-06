@@ -4,6 +4,7 @@ import { periodDisplay } from "./period";
 import { equalWeights, separatorsFromOptions, splitArtists } from "./artists";
 import { DEFAULT_SPLIT, type Separator, type SeparatorKind } from "./types";
 import { accessSql, type AccessScope } from "./access";
+import { creditsSource, realRowFilter } from "./schema";
 import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
 /**
@@ -95,6 +96,8 @@ export async function listPeriods(
     inner.push(...a.conditions);
     params.push(...a.params);
   }
+  // Devirler uygulanmış krediler (görünüm yoksa ham tabloya düşer).
+  const CSRC = await creditsSource();
   const rows = await query<{
     id: string; label: string; sort: number; year: number;
     month: number | null; quarter: number | null; gross: number; artist_count: number;
@@ -109,7 +112,7 @@ export async function listPeriods(
      from periods p
      left join (
        select c.period_id, c.gross, c.artist_id
-       from credits c join reports r on r.id = c.report_id
+       from ${CSRC} c join reports r on r.id = c.report_id
        ${inner.length ? `where ${inner.join(" and ")}` : ""}
      ) v on v.period_id = p.id
      group by p.id, p.label, p.sort, p.year, p.month, p.quarter
@@ -166,11 +169,14 @@ export interface ReportRow {
 export async function listReports(access?: AccessScope): Promise<ReportRow[]> {
   const restricted = isRestricted(access);
   const a = access ? accessSql(access, 0, "c") : { conditions: [], params: [] };
+  const CSRC = await creditsSource();
   // Kısıtlıysa toplamlar credits'ten; değilse raporun kendi alanlarından.
+  // Satır sayısı devir satırlarını saymaz — para taşınır, Excel satırı taşınmaz.
   const scoped = restricted
     ? `left join lateral (
-         select coalesce(sum(c.gross),0)::float8 g, count(*)::int rc
-         from credits c
+         select coalesce(sum(c.gross),0)::float8 g,
+                count(*)${realRowFilter(CSRC)}::int rc
+         from ${CSRC} c
          where c.report_id = r.id ${a.conditions.length ? "and " + a.conditions.join(" and ") : ""}
        ) sc on true`
     : "";
@@ -258,7 +264,9 @@ function friendlyRange(meta: { year: number; month: number | null; quarter: numb
 
 export async function loadResult(scope: Scope = {}): Promise<Result> {
   const w = buildWhere(scope);
-  const F = `from credits c join reports r on r.id = c.report_id`;
+  const CSRC = await creditsSource();
+  const F = `from ${CSRC} c join reports r on r.id = c.report_id`;
+  const RF = realRowFilter(CSRC);
   const wr = buildWhere({ ...scope, access: undefined }, "rr");
 
   // report_rows ham satır tablosudur: sanatçı/label kimliği taşımaz, bu yüzden
@@ -293,8 +301,8 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
               count(distinct c.label_id)::int labels,
               count(distinct c.territory)::int territories,
               count(distinct c.retailer)::int retailers,
-              count(*)::int credits,
-              count(*) filter (where c.gross < 0)::int neg_credits
+              count(*)${RF}::int credits,
+              count(*) filter (where c.gross < 0${CSRC === "credits" ? "" : " and not c.is_transfer"})::int neg_credits
        ${F} ${w.sql}`, w.params),
 
     restricted
@@ -308,7 +316,7 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
             solo: number; primary_g: number; feature: number }>(
       `select a.id, a.fold_key, a.display_name, a.spellings,
               sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
-              count(*)::int credits, count(distinct c.song_id)::int songs,
+              count(*)${RF}::int credits, count(distinct c.song_id)::int songs,
               sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
               sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
               sum(case when c.position > 0 then c.gross else 0 end)::float8 feature
@@ -366,9 +374,9 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
        group by c.artist_id, s.song_key, s.title, s.album, s.artist_string, l.name
        order by sum(c.gross) desc`, w.params),
 
-    query<{ song_key: string; title: string; album: string; isrc: string;
+    query<{ song_id: string; song_key: string; title: string; album: string; isrc: string;
             artist_string: string; label_name: string; gross: number; quantity: number }>(
-      `select s.song_key, s.title, s.album, s.isrc, s.artist_string,
+      `select max(s.id::text) song_id, s.song_key, s.title, s.album, s.isrc, s.artist_string,
               (array_agg(l.name order by c.gross desc))[1] label_name,
               sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
        ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id ${w.sql}
@@ -535,7 +543,7 @@ export async function loadResult(scope: Scope = {}): Promise<Result> {
   const songs: SongAgg[] = sRows.map((r) => {
     const top = songTop.get(r.song_key);
     return {
-      key: r.song_key, song: r.title, album: r.album, isrc: r.isrc,
+      id: r.song_id, key: r.song_key, song: r.title, album: r.album, isrc: r.isrc,
       label: r.label_name, artistString: r.artist_string,
       primaryArtist: r.artist_string.split(",")[0]?.trim() ?? r.artist_string,
       artists: songArtists.get(r.song_key) ?? [],

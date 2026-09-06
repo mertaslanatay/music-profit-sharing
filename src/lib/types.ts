@@ -212,6 +212,13 @@ export interface SongCredit {
 
 export interface SongAgg {
   key: string;
+  /**
+   * songs.id — yalnızca veritabanı yolunda doludur. İstemcideki hesap
+   * makinesi (yerel Excel önizlemesi) veritabanına yazmadığı için orada
+   * tanımsızdır; gelir devri gibi kayıt gerektiren işlemler bu alan
+   * olmadan açılmaz.
+   */
+  id?: string;
   song: string;
   album: string;
   isrc: string;

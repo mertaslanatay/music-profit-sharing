@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db";
+import { creditsSource } from "./schema";
 
 /**
  * Bildirim merkezi — yazma tarafı (M4NM Pulse § 1).
@@ -120,9 +121,12 @@ export async function usersForArtist(artistId: string): Promise<string[]> {
  */
 export async function usersInReport(reportId: string): Promise<string[]> {
   try {
+    // Etkin krediler: bir sanatçı o rapordan yalnızca DEVİR yoluyla kazanıyor
+    // olabilir — o da bildirimi almalı.
+    const src = await creditsSource();
     const rows = await query<{ user_id: string }>(
       `select distinct u.id user_id
-       from credits c
+       from ${src} c
        join users u on u.status = 'active' and u.role = 'artist' and (
          exists (select 1 from user_artist_access a
                   where a.user_id = u.id and a.artist_id = c.artist_id)

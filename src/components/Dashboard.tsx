@@ -222,7 +222,15 @@ export function Dashboard({
           <div className="rise" key={`${view}-${reportId}-${periodIds.join(",")}`}>
             {view === "overview" && <Overview res={result} precise={precise} onArtist={onArtist} />}
             {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={onArtist} />}
-            {view === "songs" && <Songs res={result} precise={precise} query={query} />}
+            {view === "songs" && (
+              <Songs
+                res={result}
+                precise={precise}
+                query={query}
+                reportId={reportId}
+                onChanged={() => router.refresh()}
+              />
+            )}
             {view === "labels" && <Labels res={result} precise={precise} onArtist={onArtist} />}
             {view === "geo" && <Breakdown res={result} precise={precise} query={query} mode="geo" />}
             {view === "platforms" && <Breakdown res={result} precise={precise} query={query} mode="platform" />}

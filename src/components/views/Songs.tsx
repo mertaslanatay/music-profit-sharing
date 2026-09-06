@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import clsx from "clsx";
 import type { Result } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
 import { money, moneySmart, num, pct, topN } from "@/lib/format";
-import { Bar, Card, Empty, Td, Th } from "../ui";
+import { Bar, Card, Empty, Icon, Td, Th } from "../ui";
+import { SongTransferDrawer } from "../SongTransferDrawer";
 
 type SortKey = "gross" | "quantity" | "song" | "artists";
 
@@ -12,11 +14,17 @@ export function Songs({
   res,
   precise,
   query,
+  reportId,
+  onChanged,
 }: {
   res: Result;
   precise: boolean;
   query: string;
+  /** Seçili ödeme partisi — "all" ise gelir devri açılmaz (devir dönem bazlıdır). */
+  reportId?: string;
+  onChanged?: () => void;
 }) {
+  const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
   const [sort, setSort] = useState<SortKey>("gross");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [onlyShared, setOnlyShared] = useState(false);
@@ -45,6 +53,11 @@ export function Songs({
   const shownTotal = rows.reduce((a, s) => a + s.gross, 0);
   const max = rows[0]?.gross ?? 0;
 
+  // Gelir devri dönem bazlıdır: tek bir ödeme partisi seçili olmalı. "Tüm
+  // zamanlar" görünümünde satırlar tıklanabilir değildir — hangi döneme
+  // yazılacağı belirsiz olurdu.
+  const canOpen = !!reportId && reportId !== "all";
+
   const head = (key: SortKey, label: string, align: "left" | "right" = "right") => (
     <Th
       align={align}
@@ -63,6 +76,16 @@ export function Songs({
   );
 
   return (
+    <>
+      {open && reportId && (
+        <SongTransferDrawer
+          songId={open.id}
+          songTitle={open.title}
+          reportId={reportId}
+          onClose={() => setOpen(null)}
+          onChanged={onChanged}
+        />
+      )}
     <Card pad={false} className="overflow-hidden">
       <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
         <div>
@@ -108,10 +131,24 @@ export function Songs({
               {rows.slice(0, 400).map((s, i) => {
                 const country = topN(s.territories, 1)[0];
                 return (
-                  <tr key={s.key} className="hover:bg-ink-900/[0.02] transition-colors">
+                  <tr
+                    key={s.key}
+                    onClick={() => { if (canOpen && s.id) setOpen({ id: s.id, title: s.song }); }}
+                    className={clsx(
+                      "transition-colors",
+                      canOpen && s.id
+                        ? "hover:bg-brand-50/50 cursor-pointer"
+                        : "hover:bg-ink-900/[0.02]"
+                    )}
+                  >
                     <Td className="text-ink-300 tabular text-[12px]">{i + 1}</Td>
                     <Td>
-                      <p className="font-medium text-ink-900 truncate max-w-[220px]">{s.song}</p>
+                      <p className="font-medium text-ink-900 truncate max-w-[220px] flex items-center gap-1.5">
+                        {s.song}
+                        {canOpen && s.id && (
+                          <Icon name="split" size={12} className="text-ink-300 shrink-0" />
+                        )}
+                      </p>
                       {s.album && s.album !== s.song && (
                         <p className="text-[11px] text-ink-300 truncate max-w-[220px]">{s.album}</p>
                       )}
@@ -161,5 +198,6 @@ export function Songs({
         </div>
       )}
     </Card>
+    </>
   );
 }
