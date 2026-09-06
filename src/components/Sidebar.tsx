@@ -120,6 +120,16 @@ export function Sidebar({
           </button>
         )}
 
+        {viewer && (
+          <Link
+            href="/destek"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+          >
+            <Icon name="copy" size={16} />
+            <span className="flex-1 text-left">İletişim</span>
+          </Link>
+        )}
+
         {viewer?.role === "artist" && (
           <Link
             href="/hesabim"

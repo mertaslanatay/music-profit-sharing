@@ -70,3 +70,30 @@ export async function transfersReady(): Promise<boolean> {
   }
   return transfersCache.ready;
 }
+
+/* ------------------------------------------------- iletişim merkezi tabloları */
+
+let supportCache: { ready: boolean; at: number } | null = null;
+
+/**
+ * support_threads tablosu kurulu mu? (0010)
+ *
+ * Aynı dağıtım penceresi sorunu: kod push ile canlıya çıkıyor, migration'ı
+ * insan sonra çalıştırıyor. Arada kalan sürede destek kutusunu açan herkes
+ * ham Postgres hatası almasın diye.
+ */
+export async function supportReady(): Promise<boolean> {
+  const now = Date.now();
+  if (supportCache && (supportCache.ready || now - supportCache.at < RETRY_MS)) {
+    return supportCache.ready;
+  }
+  try {
+    const row = await queryOne<{ t: string | null }>(
+      `select to_regclass('public.support_threads')::text as t`
+    );
+    supportCache = { ready: !!row?.t, at: now };
+  } catch {
+    supportCache = { ready: false, at: now };
+  }
+  return supportCache.ready;
+}
