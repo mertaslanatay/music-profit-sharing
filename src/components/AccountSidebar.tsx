@@ -32,12 +32,12 @@ export function AccountSidebar({
     <aside className="w-[232px] shrink-0 bg-card border-r border-line flex flex-col h-full no-print">
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center shrink-0 p-1.5">
+          <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center shrink-0 p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
-            <p className="text-[15px] font-bold text-ink-900 leading-tight tracking-tight">M4NM</p>
+            <p className="text-[16px] font-bold text-ink-900 leading-tight tracking-tight">M4NM</p>
             <p className="text-[11px] text-ink-400 leading-tight truncate" title={artistName}>
               {artistName}
             </p>
