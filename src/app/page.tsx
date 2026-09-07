@@ -67,7 +67,15 @@ export default async function Page({
     access,
   };
 
-  const result = await loadResult(scope);
+  let result;
+  try {
+    result = await loadResult(scope);
+  } catch (e) {
+    // listPeriods/listReports gibi burası da opak "Application error" yerine
+    // gerçek hatayı gösterir — aksi hâlde tek belirti bir Vercel digest'i
+    // oluyordu ve kök nedeni teşhis etmek imkansızlaşıyordu.
+    return <Fail message={e instanceof Error ? e.message : "Veritabanına bağlanılamadı."} />;
+  }
 
   // Mali veri görüntüleme her zaman kaydedilir — kimin neye ne zaman
   // baktığı sonradan sorulabilmeli.
