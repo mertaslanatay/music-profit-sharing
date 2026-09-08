@@ -5,6 +5,7 @@ import { equalWeights, separatorsFromOptions, splitArtists } from "./artists";
 import { DEFAULT_SPLIT, type Separator, type SeparatorKind } from "./types";
 import { accessSql, type AccessScope } from "./access";
 import { creditsSource, realRowFilter } from "./schema";
+import { cachedByVersion, scopeKey } from "./dashboardCache";
 import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
 /**
@@ -262,7 +263,22 @@ function friendlyRange(meta: { year: number; month: number | null; quarter: numb
 
 /* ------------------------------------------------------- ana Result kurulumu */
 
+/**
+ * Gösterge panelinin tüm rakamlarını hesaplar.
+ *
+ * Sonuç, veritabanındaki sürüm sayacına göre önbelleklenir (bkz.
+ * src/lib/dashboardCache.ts + 0015 migration). Veri değişmediği sürece
+ * aşağıdaki ~23 ağır sorgu hiç çalıştırılmaz; veri değiştiği ANDA sayaç
+ * artar ve önbellek geçersizleşir — yani bayat veri gösterilmez.
+ *
+ * Önbellek anahtarı kullanıcının YETKİ KAPSAMINI içerir; içermeseydi bir
+ * kullanıcının sonucu başkasına servis edilebilirdi.
+ */
 export async function loadResult(scope: Scope = {}): Promise<Result> {
+  return cachedByVersion(scopeKey(scope), () => computeResult(scope));
+}
+
+async function computeResult(scope: Scope = {}): Promise<Result> {
   const w = buildWhere(scope);
   const CSRC = await creditsSource();
   const F = `from ${CSRC} c join reports r on r.id = c.report_id`;

@@ -218,18 +218,36 @@ function enrich(e: unknown): unknown {
   return e;
 }
 
+/**
+ * Yavaş sorgu günlüğü — VARSAYILAN KAPALI.
+ *
+ * DB_LOG_SLOW_MS=500 gibi bir değer verilirse, o eşiği aşan her sorgu
+ * süresiyle birlikte loglanır. Üretimde "hangi sorgu yavaş" sorusunu
+ * tahminle değil ölçümle cevaplamak için var: Vercel > Logs ekranında
+ * "[db] yavaş sorgu" diye aratmak yeterli.
+ */
+const LOG_SLOW_MS = Number(process.env.DB_LOG_SLOW_MS ?? 0);
+
+function logSlow(text: string, ms: number): void {
+  if (!LOG_SLOW_MS || ms < LOG_SLOW_MS) return;
+  const tek = text.replace(/\s+/g, " ").trim().slice(0, 120);
+  console.warn(`[db] yavaş sorgu ${ms}ms :: ${tek}`);
+}
+
 export async function query<T = Record<string, unknown>>(
   text: string,
   params: unknown[] = []
 ): Promise<T[]> {
   const g = gate();
   await g.acquire();
+  const t0 = LOG_SLOW_MS ? Date.now() : 0;
   try {
     const res = await pool().query(text, params);
     return res.rows as T[];
   } catch (e) {
     throw enrich(e);
   } finally {
+    if (LOG_SLOW_MS) logSlow(text, Date.now() - t0);
     g.release();
   }
 }
