@@ -138,13 +138,12 @@ function Fail({ message }: { message: string }) {
         <div className="flex items-start gap-3">
           <Icon name="alert" size={20} className="text-accent-rose mt-0.5 shrink-0" />
           <div>
-            <h1 className="text-[16px] font-semibold text-ink-900">Veritabanına bağlanılamadı</h1>
+            <h1 className="text-[16px] font-semibold text-ink-900">Veriler yüklenemedi</h1>
             <p className="text-[13px] text-ink-600 mt-2 leading-relaxed">{message}</p>
             <p className="text-[12.5px] text-ink-500 mt-3 leading-relaxed">
-              <code className="bg-canvas px-1.5 py-0.5 rounded border border-line">.env.local</code>{" "}
-              içindeki{" "}
+              Sayfayı yenilemeyi dene. Sorun sürerse{" "}
               <code className="bg-canvas px-1.5 py-0.5 rounded border border-line">DATABASE_URL</code>{" "}
-              değerini kontrol et. Şifrede özel karakter varsa URL kodlaması gerekir
+              ayarını kontrol et — şifrede özel karakter varsa URL kodlaması gerekir
               (<code>@</code> → <code>%40</code>).
             </p>
           </div>
