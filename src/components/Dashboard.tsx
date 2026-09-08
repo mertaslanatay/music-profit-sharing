@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
 import type { PeriodRow, ReportRow } from "@/lib/queries";
+import { NotificationBell } from "./NotificationBell";
 import { exportWorkbook } from "@/lib/export";
 import { scopeArtistToLabel } from "@/lib/calc";
 import { money, num, pct } from "@/lib/format";
@@ -152,6 +153,11 @@ export function Dashboard({
             >
               0,0000
             </button>
+
+            {/* Bildirim zili artık kenar çubuğunda değil, birincil eylemin
+                (Excel indir) hemen solunda — kullanıcı bakışının zaten
+                düştüğü yer burası. Birincil eylem en sağda kalıyor. */}
+            {viewer && <NotificationBell compact />}
 
             <Button
               onClick={() => {

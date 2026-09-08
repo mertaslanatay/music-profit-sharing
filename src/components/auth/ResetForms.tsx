@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Alert, Field, buttonClass, inputClass } from "./AuthShell";
+import { PasswordInput } from "./PasswordInput";
 
 export function ResetRequestForm() {
   const [email, setEmail] = useState("");
@@ -82,12 +83,12 @@ export function NewPasswordForm() {
     <form onSubmit={submit} className="space-y-4">
       {error && <Alert tone="error">{error}</Alert>}
       <Field label="Yeni şifre" hint="En az 10 karakter, harf ve rakam.">
-        <input type="password" required autoFocus autoComplete="new-password"
-               className={inputClass} value={p1} onChange={(e) => setP1(e.target.value)} />
+        <PasswordInput required autoFocus autoComplete="new-password"
+                       value={p1} onChange={(e) => setP1(e.target.value)} />
       </Field>
       <Field label="Yeni şifre tekrar">
-        <input type="password" required autoComplete="new-password"
-               className={inputClass} value={p2} onChange={(e) => setP2(e.target.value)} />
+        <PasswordInput required autoComplete="new-password"
+                       value={p2} onChange={(e) => setP2(e.target.value)} />
         {mismatch && <span className="block text-[11.5px] text-accent-rose mt-1">Şifreler uyuşmuyor.</span>}
       </Field>
       <button type="submit" disabled={busy || mismatch || p1.length < 10} className={buttonClass}>

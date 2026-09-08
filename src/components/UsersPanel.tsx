@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { UserListRow } from "@/app/api/admin/users/route";
-import { Avatar, Button, Card, CardHead, Empty, Icon, Td, Th } from "./ui";
+import { Avatar, Button, Card, CardHead, Drawer, Empty, Icon, Td, Th } from "./ui";
 import { PaymentInfoBlock } from "./PaymentInfoBlock";
 
 /* ---------------------------------------------------------------- tipler */
@@ -57,6 +57,12 @@ export function UsersPanel({ initial, labels, artists }: Props) {
     return c;
   }, [users]);
 
+  // Drawer'daki kullanıcı listeden TAZE okunuyor: bir işlem sonrası liste
+  // yenilendiğinde drawer da güncel durumu gösterir (ör. onayladıktan sonra
+  // "Onayla" düğmesi yerini "Askıya Al"a bırakır).
+  const seciliKullanici = editing ? users.find((u) => u.id === editing) ?? null : null;
+  const drawerAcik = !!seciliKullanici;
+
   const filtered = useMemo(() => {
     const lq = q.toLowerCase();
     return users.filter((u) => {
@@ -80,7 +86,15 @@ export function UsersPanel({ initial, labels, artists }: Props) {
 
   /* -------------------------------------------- istek yardımcısı */
 
-  const act = useCallback(async (userId: string, body: Record<string, unknown>, msg: string) => {
+  const act = useCallback(async (
+    userId: string,
+    body: Record<string, unknown>,
+    msg: string,
+    // Onayla/Reddet gibi "bitiren" işlemlerden sonra drawer kapanır: kullanıcı
+    // zaten listeden (Bekleyenler filtresinde) düşüyor, açık kalan drawer
+    // "işlem oldu mu?" belirsizliği yaratıyordu.
+    kapat = false,
+  ) => {
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -93,6 +107,7 @@ export function UsersPanel({ initial, labels, artists }: Props) {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "İstek başarısız.");
       setSuccess(msg);
+      if (kapat) setEditing(null);
       await refresh();
       setTimeout(() => setSuccess(null), 3000);
     } catch (e) {
@@ -124,15 +139,34 @@ export function UsersPanel({ initial, labels, artists }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Durum çubuğu */}
-      {error && (
-        <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[13px] text-accent-rose flex items-center gap-2">
-          <Icon name="alert" size={15} /> {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-xl bg-brand-50 border border-brand-200 p-3 text-[13px] text-brand-700 flex items-center gap-2">
-          <Icon name="check" size={15} /> {success}
+      {/* Durum çubuğu.
+          Drawer açıkken sabit (fixed) ve perdenin ÜSTÜNDE gösteriliyor:
+          normal akışta kalsaydı, drawer'dan yapılan başarısız bir işlemin
+          hata mesajı %25 karartmanın arkasında kalır ve kullanıcı neden
+          bir şey olmadığını hiç anlamazdı. */}
+      {(error || success) && (
+        <div
+          className={clsx(
+            drawerAcik &&
+              "fixed top-4 left-1/2 -translate-x-1/2 z-[60] w-[min(560px,calc(100vw-2rem))]"
+          )}
+        >
+          {error && (
+            <div className={clsx(
+              "rounded-xl bg-rose-50 border border-rose-200 p-3 text-[13px] text-accent-rose flex items-center gap-2",
+              drawerAcik && "shadow-pop"
+            )}>
+              <Icon name="alert" size={15} /> {error}
+            </div>
+          )}
+          {success && (
+            <div className={clsx(
+              "rounded-xl bg-brand-50 border border-brand-200 p-3 text-[13px] text-brand-700 flex items-center gap-2",
+              drawerAcik && "shadow-pop"
+            )}>
+              <Icon name="check" size={15} /> {success}
+            </div>
+          )}
         </div>
       )}
 
@@ -196,11 +230,8 @@ export function UsersPanel({ initial, labels, artists }: Props) {
                     user={u}
                     labels={labels}
                     artists={artists}
-                    isEditing={editing === u.id}
-                    onToggle={() => setEditing(editing === u.id ? null : u.id)}
-                    onAction={act}
-                    onDelete={delUser}
-                    busy={busy}
+                    secili={editing === u.id}
+                    onOpen={() => setEditing(u.id)}
                   />
                 ))}
               </tbody>
@@ -208,8 +239,37 @@ export function UsersPanel({ initial, labels, artists }: Props) {
           </div>
         </Card>
       )}
+
+      {/* Kullanıcı işlemleri artık satır arasında açılan bir bloktan değil,
+          sağdan açılan drawer'dan yapılıyor: tablo sabit kalıyor, form için
+          bol yer oluyor ve uzun listede satırlar yerinden oynamıyor. */}
+      <Drawer
+        open={!!seciliKullanici}
+        onClose={() => setEditing(null)}
+        width={720}
+        title={seciliKullanici ? kullaniciAdi(seciliKullanici) : ""}
+        sub={seciliKullanici?.email}
+      >
+        {seciliKullanici && (
+          <UserDetail
+            // key: başka bir kullanıcıya geçildiğinde form state'i sıfırlansın.
+            key={seciliKullanici.id}
+            user={seciliKullanici}
+            labels={labels}
+            artists={artists}
+            onAction={act}
+            onDelete={delUser}
+            busy={busy}
+          />
+        )}
+      </Drawer>
     </div>
   );
+}
+
+/** Görünen ad; yoksa e-posta. İki yerde kullanıldığı için ortak. */
+function kullaniciAdi(u: UserListRow): string {
+  return [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
 }
 
 /* ========================================================== satır + detay */
@@ -218,23 +278,17 @@ function UserRow({
   user: u,
   labels,
   artists,
-  isEditing,
-  onToggle,
-  onAction,
-  onDelete,
-  busy,
+  secili,
+  onOpen,
 }: {
   user: UserListRow;
   labels: LabelOption[];
   artists: ArtistOption[];
-  isEditing: boolean;
-  onToggle: () => void;
-  onAction: (id: string, body: Record<string, unknown>, msg: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-  busy: boolean;
+  secili: boolean;
+  onOpen: () => void;
 }) {
   const s = STATUS_STYLE[u.status] ?? STATUS_STYLE.pending;
-  const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
+  const name = kullaniciAdi(u);
   const accessParts: string[] = [];
   if (u.labelIds.length > 0) {
     const names = u.labelIds.map((id) => labels.find((l) => l.id === id)?.name ?? "?").join(", ");
@@ -247,11 +301,11 @@ function UserRow({
   if (u.role === "admin") accessParts.unshift("Tam erişim");
 
   return (
-    <>
       <tr
+        onClick={onOpen}
         className={clsx(
-          "border-b border-line last:border-b-0 transition-colors",
-          isEditing ? "bg-ink-900/[0.02]" : "hover:bg-ink-900/[0.015]"
+          "border-b border-line last:border-b-0 transition-colors cursor-pointer",
+          secili ? "bg-brand-50/60" : "hover:bg-ink-900/[0.015]"
         )}
       >
         <Td>
@@ -288,52 +342,20 @@ function UserRow({
           <span className="text-[12px] text-ink-500">{dateTr(u.createdAt)}</span>
         </Td>
         <Td align="center">
-          <div className="flex items-center gap-1.5 justify-center">
-            {u.status === "pending" && (
-              <>
-                <Button
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() => onAction(u.id, { action: "approve" }, `${name} onaylandı.`)}
-                  className="text-[11.5px] px-2.5 py-1"
-                >
-                  <Icon name="check" size={13} /> Onayla
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => onAction(u.id, { action: "reject" }, `${name} reddedildi.`)}
-                  className="text-[11.5px] px-2.5 py-1"
-                >
-                  Reddet
-                </Button>
-              </>
-            )}
-            <Button
-              variant="soft"
-              onClick={onToggle}
-              className="text-[11.5px] px-2.5 py-1"
-            >
-              <Icon name="sliders" size={13} />
-            </Button>
-          </div>
+          {/* Kendi onClick'i var ve olayı DURDURUYOR: satıra da çıksaydı
+              onOpen iki kez çalışırdı. Bubbling'e güvenmek yerine açıkça
+              yazmak, ileride araya bir stopPropagation girerse düğmenin
+              sessizce ölmesini engelliyor. */}
+          <Button
+            variant="soft"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            className="text-[11.5px] px-2.5 py-1"
+            title="Kullanıcıyı yönet"
+          >
+            <Icon name="sliders" size={13} /> Yönet
+          </Button>
         </Td>
       </tr>
-      {isEditing && (
-        <tr className="bg-ink-900/[0.015]">
-          <td colSpan={6} className="px-4 py-4">
-            <UserDetail
-              user={u}
-              labels={labels}
-              artists={artists}
-              onAction={onAction}
-              onDelete={onDelete}
-              busy={busy}
-            />
-          </td>
-        </tr>
-      )}
-    </>
   );
 }
 
@@ -350,7 +372,7 @@ function UserDetail({
   user: UserListRow;
   labels: LabelOption[];
   artists: ArtistOption[];
-  onAction: (id: string, body: Record<string, unknown>, msg: string) => Promise<void>;
+  onAction: (id: string, body: Record<string, unknown>, msg: string, kapat?: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   busy: boolean;
 }) {
@@ -473,13 +495,24 @@ function UserDetail({
             </>
           )}
           {u.status === "pending" && (
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => onAction(u.id, { action: "approve" }, `${name} onaylandı.`)}
-            >
-              <Icon name="check" size={13} /> Onayla
-            </Button>
+            <>
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => onAction(u.id, { action: "approve" }, `${name} onaylandı.`, true)}
+              >
+                <Icon name="check" size={13} /> Onayla
+              </Button>
+              {/* Reddet, eskiden tablo satırındaydı; işlemler drawer'a
+                  taşınırken buraya alındı — kaybolmaması önemliydi. */}
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => onAction(u.id, { action: "reject" }, `${name} reddedildi.`, true)}
+              >
+                <Icon name="close" size={13} /> Reddet
+              </Button>
+            </>
           )}
         </div>
       </div>

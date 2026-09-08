@@ -13,11 +13,23 @@ export const runtime = "nodejs";
  * mümkün değil.
  */
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const viewer = await requireViewer();
     if (!viewer) return NextResponse.json({ notifications: [], announcements: [], unread: 0, unreadAnnouncements: 0 });
-    const inbox = await inboxFor(viewer.userId);
+    // Zil modalı varsayılanla yetinir; /bildirimler sayfası daha fazlasını
+    // ister. Üst sınır bilinçli: sınırsız bir liste hem sorguyu hem de
+    // taşınan JSON'u kontrolsüz büyütürdü.
+    // DİKKAT: önce HAM string okunuyor. Number(null) === 0 ve
+    // Number.isFinite(0) === true olduğu için, doğrudan Number()'a
+    // geçirilseydi parametresiz istekler limit=1'e düşerdi — yani zil tek
+    // bildirim gösterirdi.
+    const ham = new URL(req.url).searchParams.get("limit");
+    const sayi = ham === null || ham.trim() === "" ? NaN : Number(ham);
+    // Math.trunc şart: kesirli bir değer (?limit=10.5) sorguya bigint
+    // parametresi olarak gidip hata üretirdi.
+    const limit = Number.isFinite(sayi) ? Math.trunc(Math.min(Math.max(sayi, 1), 200)) : 50;
+    const inbox = await inboxFor(viewer.userId, limit);
     return NextResponse.json(inbox);
   } catch (e) {
     return denyResponse(e);

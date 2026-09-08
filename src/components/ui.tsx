@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { colorFor, initials, money, moneySmart, num, pct } from "@/lib/format";
 
 export function Card({
@@ -155,7 +155,9 @@ export function Button({
   title,
 }: {
   children: ReactNode;
-  onClick?: () => void;
+  // Olayı alır: çağıranın stopPropagation yapabilmesi gerekiyor (ör.
+  // tıklanabilir bir tablo satırının içindeki düğme).
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   variant?: "primary" | "ghost" | "danger" | "soft";
   className?: string;
   disabled?: boolean;
@@ -336,12 +338,15 @@ const PATHS: Record<string, string> = {
   save: "M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 3v6h7M8 21v-6h8v6",
   print: "M7 9V3h10v6M7 19H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 15h10v6H7z",
   back: "M15 18l-6-6 6-6",
+  forward: "M9 18l6-6-6-6",
   file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
   bell: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   phone: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z",
   mail: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6",
   percent: "M19 5L5 19M6.5 6.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zM14.5 14.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z",
+  eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+  eyeOff: "M3 3l18 18M10.6 10.7a3 3 0 0 0 4.2 4.2M9.9 5.2A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17.3 17.3 0 0 1-3.2 4.1M6.2 6.3A17.3 17.3 0 0 0 2 12s3.6 7 10 7c1.4 0 2.7-.3 3.9-.8",
 };
 
 export function Icon({
@@ -386,6 +391,99 @@ export function Icon({
  * aynı Escape davranışı ve aynı arka plan karartması her yerde geçerli olsun.
  * Mevcut iki drawer'ın görsel çıktısı birebir korunacak şekilde yazıldı.
  */
+/**
+ * Modal ve Drawer'ın ortak "dialog" davranışı: Escape, odak yönetimi,
+ * Tab tuzağı ve arka plan kaydırma kilidi.
+ *
+ * NEDEN TEK YERDE: bu mantık Modal'a yazılıp Drawer'a yazılmasaydı, yönetim
+ * panelindeki kullanıcı drawer'ı (rol seçimi, iki kaydırmalı liste, yıkıcı
+ * işlemler) klavyeyle kullanılamaz kalırdı — üstelik modaldan çok daha uzun
+ * süre açık duran ekran o.
+ *
+ * onClose bilerek REF'te tutuluyor: çağıran taraflar inline ok fonksiyonu
+ * geçtiği için her render'da kimliği değişiyor. Bağımlılık dizisine
+ * konsaydı effect her render'da yeniden kurulur, temizlik fonksiyonu da
+ * odağı geri verip arka plan kilidini açıp kapattığı için MODAL AÇIKKEN her
+ * küçük state değişiminde odak yerinden sıçrardı (sekme değiştirmek gibi).
+ */
+/**
+ * Açık dialog sayacı. İki dialog iç içe DEĞİL de üst üste açılıp yanlış
+ * sırayla kapanırsa (A aç, B aç, A kapan) her biri kendi başına
+ * body.overflow'u geri yazardı ve sayfa kalıcı olarak kaydırılamaz
+ * kalabilirdi. Stil yalnızca 0->1 ve 1->0 geçişlerinde yazılıyor.
+ */
+let acikDialogSayisi = 0;
+let oncekiBodyOverflow = "";
+
+function bodyKilitle() {
+  if (acikDialogSayisi === 0) {
+    oncekiBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  acikDialogSayisi += 1;
+}
+
+function bodyCoz() {
+  acikDialogSayisi = Math.max(0, acikDialogSayisi - 1);
+  if (acikDialogSayisi === 0) document.body.style.overflow = oncekiBodyOverflow;
+}
+
+function useDialogChrome(open: boolean, onClose: () => void) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef(onClose);
+  // Render sırasında değil, commit sonrası yazılıyor: React, render
+  // sırasında ref yazmayı garanti etmiyor (atılan/tekrarlanan bir render
+  // ref'te hiç commit edilmemiş bir closure bırakabilir). useRef zaten
+  // geçerli bir başlangıç değeri verdiği için arada bayat kalan an yok.
+  useEffect(() => { closeRef.current = onClose; });
+
+  useEffect(() => {
+    if (!open) return;
+    const oncekiOdak = document.activeElement as HTMLElement | null;
+    bodyKilitle();
+    panelRef.current?.focus();
+
+    const odaklanabilirler = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { closeRef.current(); return; }
+      if (e.key !== "Tab") return;
+      const kok = panelRef.current;
+      if (!kok) return;
+      const liste = odaklanabilirler();
+      if (liste.length === 0) return;
+      const ilk = liste[0];
+      const son = liste[liste.length - 1];
+      const aktif = document.activeElement;
+
+      // Odak panelin KENDİSİNDE (açılışta) ya da tamamen dışındaysa,
+      // ilk/son öğeye çekiyoruz. Bu olmadan açılıştan sonraki ilk
+      // Shift+Tab dialogdan geriye doğru sızıyordu.
+      if (aktif === kok || !kok.contains(aktif)) {
+        e.preventDefault();
+        (e.shiftKey ? son : ilk).focus();
+        return;
+      }
+      if (e.shiftKey && aktif === ilk) { e.preventDefault(); son.focus(); }
+      else if (!e.shiftKey && aktif === son) { e.preventDefault(); ilk.focus(); }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      bodyCoz();
+      oncekiOdak?.focus?.();
+    };
+  }, [open]);
+
+  return panelRef;
+}
+
 export function Drawer({
   open,
   onClose,
@@ -404,13 +502,11 @@ export function Drawer({
   headerRight?: ReactNode;
   children: ReactNode;
 }) {
-  // Escape her zaman kapatır — fare kullanmayan biri de çıkabilmeli.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Escape, odak tuzağı ve arka plan kilidi Modal ile ORTAK — bkz.
+  // useDialogChrome. Yönetim panelindeki kullanıcı drawer'ı buraya taşındığı
+  // için bu ekranın klavyeyle kullanılabilir olması artık daha da önemli.
+  const panelRef = useDialogChrome(open, onClose);
+  const basligiId = useId();
 
   if (!open) return null;
 
@@ -422,14 +518,17 @@ export function Drawer({
         aria-hidden
       />
       <div
+        ref={panelRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        className="fixed right-0 top-0 bottom-0 w-full bg-canvas z-50 slide-in overflow-y-auto scroll-thin shadow-pop no-print"
+        aria-labelledby={basligiId}
+        className="fixed right-0 top-0 bottom-0 w-full bg-canvas z-50 slide-in overflow-y-auto scroll-thin shadow-pop no-print outline-none"
         style={{ maxWidth: width }}
       >
         <div className="sticky top-0 bg-canvas/95 backdrop-blur border-b border-line px-5 py-3.5 flex items-center gap-3 z-10">
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold text-ink-900 leading-tight truncate">{title}</p>
+            <p id={basligiId} className="text-[15px] font-semibold text-ink-900 leading-tight truncate">{title}</p>
             {sub && <p className="text-[11.5px] text-ink-400 leading-tight mt-0.5">{sub}</p>}
           </div>
           {headerRight}
@@ -445,6 +544,100 @@ export function Drawer({
         <div className="p-5">{children}</div>
       </div>
     </>
+  );
+}
+
+/**
+ * Ortada açılan modal.
+ *
+ * Drawer ile aynı kurallar: arka plan tıklaması ve Escape kapatır, aynı
+ * karartma ve gölge kullanılır. Fark, içeriğin kenardan değil ORTADAN
+ * açılması — kısa ve odaklı listeler (ör. son 10 bildirim) için yandan
+ * kayan geniş bir panel gereğinden ağır duruyordu.
+ *
+ * Gövde kendi içinde kayar (maxHeight), böylece uzun içerikte sayfanın
+ * kendisi değil yalnızca modal kayar ve alttaki footer (ör. "Tümünü gör")
+ * her zaman görünür kalır.
+ */
+export function Modal({
+  open,
+  onClose,
+  title,
+  sub,
+  width = 520,
+  headerRight,
+  footer,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: ReactNode;
+  sub?: ReactNode;
+  /** Kutu genişliği (px). Varsayılan 520. */
+  width?: number;
+  headerRight?: ReactNode;
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  const panelRef = useDialogChrome(open, onClose);
+  const basligiId = useId();
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-6 pointer-events-none no-print">
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={basligiId}
+          className="w-full bg-canvas rounded-xl2 shadow-pop rise pointer-events-auto flex flex-col mt-[8vh] max-h-[80vh] overflow-hidden outline-none"
+          style={{ maxWidth: width }}
+        >
+          <div className="border-b border-line px-5 py-3.5 flex items-center gap-3 shrink-0">
+            <div className="min-w-0 flex-1">
+              <p id={basligiId} className="text-[15px] font-semibold text-ink-900 leading-tight truncate">{title}</p>
+              {sub && <p className="text-[11.5px] text-ink-400 leading-tight mt-0.5">{sub}</p>}
+            </div>
+            {headerRight}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-ink-400 hover:bg-ink-900/[0.05] hover:text-ink-700 transition-colors shrink-0"
+              title="Kapat (Esc)"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+          <div className="p-5 overflow-y-auto scroll-thin flex-1">{children}</div>
+          {footer && <div className="border-t border-line px-5 py-3 shrink-0">{footer}</div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Tek satırlık tercih anahtarı — hem /hesabim hem yönetim > Profilim kullanır. */
+export function PrefToggle({
+  label, checked, onChange,
+}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-ink-900/[0.02] cursor-pointer transition-colors">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 rounded border-line accent-brand-600 shrink-0"
+      />
+      <span className="text-[13px] text-ink-700">{label}</span>
+    </label>
   );
 }
 

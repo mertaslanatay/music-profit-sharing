@@ -3,7 +3,6 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { Icon } from "./ui";
-import { NotificationBell } from "./NotificationBell";
 import { LogoutButton } from "./auth/LogoutButton";
 
 export type ViewKey =
@@ -111,8 +110,6 @@ export function Sidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
-        {viewer && <NotificationBell />}
-
         {/* Yönetim yalnızca yöneticide görünür. Bu bir kolaylık; asıl engel
             sunucu tarafındaki yetki denetimidir. */}
         {(!viewer || viewer.isAdmin) && (

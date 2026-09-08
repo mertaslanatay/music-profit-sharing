@@ -12,11 +12,13 @@ import { SeparatorsPanel } from "./SeparatorsPanel";
 import { AnnouncementsPanel } from "./AnnouncementsPanel";
 import { SupportPanel } from "./SupportPanel";
 import { AdminMailPanel } from "./AdminMailPanel";
+import { AdminProfilePanel } from "./AdminProfilePanel";
+import { NotificationBell } from "./NotificationBell";
 import { AdminSidebar, type AdminTabDef } from "./AdminSidebar";
 import type { ViewerBadge } from "./Sidebar";
 import type { Separator } from "@/lib/types";
 
-type Tab = "reports" | "payments" | "bank-requests" | "users" | "messages" | "mail" | "separators" | "announcements" | "audit";
+type Tab = "reports" | "payments" | "bank-requests" | "users" | "messages" | "mail" | "separators" | "announcements" | "audit" | "profile";
 
 const TITLES: Record<Tab, { title: string; sub: string }> = {
   reports: { title: "Raporlar", sub: "Excel yükle, kontrol et, yayınla" },
@@ -28,6 +30,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   separators: { title: "Ayrıştırma", sub: "Sanatçı ayırma belirteçleri" },
   announcements: { title: "Duyurular", sub: "Kullanıcılara yayınlanan güncellemeler" },
   audit: { title: "Denetim", sub: "İşlem kaydı ve şüpheli aktivite" },
+  profile: { title: "Profilim", sub: "Kendi kişisel ve iletişim bilgilerin" },
 };
 
 interface LabelOption { id: string; name: string }
@@ -91,6 +94,9 @@ export function AdminTabs({
     { key: "separators", label: "Ayrıştırma", icon: "split" },
     { key: "announcements", label: "Duyurular", icon: "bell" },
     { key: "audit", label: "Denetim", icon: "clock" },
+    // Yöneticinin KENDİ bilgileri — listenin sonunda, diğer yönetim
+    // işlerinden ayrı dursun diye.
+    { key: "profile", label: "Profilim", icon: "sliders" },
   ];
 
   const meta = TITLES[tab];
@@ -100,9 +106,14 @@ export function AdminTabs({
       <AdminSidebar tabs={tabs} active={tab} onTab={(k) => setTab(k as Tab)} viewer={viewer} />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-line px-6 py-3.5 shrink-0 no-print">
-          <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
-          <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+        <header className="bg-card border-b border-line px-6 py-3.5 shrink-0 no-print flex items-center gap-4">
+          <div className="min-w-0">
+            <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
+            <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+          </div>
+          {/* Zil artık kenar çubuğunda değil, sağ üstte — ana paneldeki
+              yerleşimle aynı olsun diye. */}
+          {viewer && <div className="ml-auto shrink-0"><NotificationBell compact /></div>}
         </header>
 
         <div className="flex-1 overflow-y-auto scroll-thin p-6">
@@ -112,6 +123,7 @@ export function AdminTabs({
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
           {tab === "messages" && <SupportPanel mode="admin" />}
           {tab === "mail" && <AdminMailPanel users={users} />}
+          {tab === "profile" && <AdminProfilePanel />}
           {tab === "separators" && <SeparatorsPanel initial={separators} />}
           {tab === "announcements" && <AnnouncementsPanel />}
           {tab === "audit" && <AuditPanel />}

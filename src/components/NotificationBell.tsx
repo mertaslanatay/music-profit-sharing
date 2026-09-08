@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import type { AnnouncementRow, InboxSummary, NotificationRow, NotificationType } from "@/lib/notify";
-import { Button, Drawer, Empty, Icon } from "./ui";
+import Link from "next/link";
+
+import { Button, Empty, Icon, Modal } from "./ui";
 
 /**
  * Bildirim merkezi — zil düğmesi + sağdan açılan panel (M4NM Pulse § 1).
@@ -46,6 +48,12 @@ function since(iso: string): string {
   if (gun < 7) return `${gun} gün önce`;
   return new Date(t).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 }
+
+/**
+ * Modalda kaç kayıt gösterilir. Fazlası varsa altta "Tümünü gör" çıkar ve
+ * /bildirimler sayfasına gider — modal hızlı bakış içindir, arşiv için değil.
+ */
+const MODAL_LIMIT = 10;
 
 export function NotificationBell({ compact }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -90,6 +98,17 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
     }
   };
 
+  // Modal hızlı bakış: her sekmede yalnızca son 10 kayıt. Fazlası varsa
+  // altta "Tümünü gör" görünür (Mert'in isteği: "eğer çok fazla bildirim
+  // var ise").
+  const gosterilenBildirimler = inbox.notifications.slice(0, MODAL_LIMIT);
+  const gosterilenDuyurular = inbox.announcements.slice(0, MODAL_LIMIT);
+  // İki listeden HERHANGİ biri taşıyorsa link görünür: /bildirimler sayfası
+  // ikisini birden gösteriyor, sekmeye göre gizlemek kullanıcıyı gereksiz
+  // yere o sekmeye geçmek zorunda bırakırdı.
+  const fazlasiVar =
+    inbox.notifications.length > MODAL_LIMIT || inbox.announcements.length > MODAL_LIMIT;
+
   const openItem = async (n: NotificationRow) => {
     if (!n.readAt) await patch({ id: n.id });
     if (n.actionUrl) window.location.href = n.actionUrl;
@@ -101,15 +120,23 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
         type="button"
         onClick={() => setOpen(true)}
         title="Bildirimler"
+        // compact hâlde düğmenin içinde metin YOK; erişilebilir ad hesabı
+        // içeriği önce aldığı için ekran okuyucu yalnızca okunmamış sayısını
+        // ("3, düğme") söylüyordu. Açık bir ad şart.
+        aria-label={total > 0 ? `Bildirimler, ${total} okunmamış` : "Bildirimler"}
         className={clsx(
-          "relative flex items-center gap-2.5 rounded-xl font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all",
-          compact ? "w-9 h-9 justify-center" : "w-full px-3 py-2.5 text-[13px]"
+          "relative flex items-center gap-2.5 rounded-xl font-medium transition-all",
+          // compact: araç çubuğunda Excel indir'in yanında durduğu için
+          // komşu düğmelerle aynı kenarlıklı beyaz görünüm kullanılıyor.
+          compact
+            ? "w-9 h-9 justify-center bg-white border border-line text-ink-600 hover:text-ink-900 hover:bg-ink-900/[0.03]"
+            : "w-full px-3 py-2.5 text-[13px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
         )}
       >
         <span className="relative flex items-center justify-center">
           <Icon name="bell" size={compact ? 17 : 16} />
           {total > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] px-1 rounded-full bg-accent-rose text-white text-[9.5px] font-bold flex items-center justify-center tabular">
+            <span aria-hidden className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] px-1 rounded-full bg-accent-rose text-white text-[9.5px] font-bold flex items-center justify-center tabular">
               {total > 99 ? "99+" : total}
             </span>
           )}
@@ -117,7 +144,7 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
         {!compact && <span className="flex-1 text-left">Bildirimler</span>}
       </button>
 
-      <Drawer
+      <Modal
         open={open}
         onClose={() => setOpen(false)}
         title="Bildirimler"
@@ -128,6 +155,18 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
             <Button variant="ghost" onClick={() => patch({ all: true })} disabled={loading}>
               Tümünü okundu işaretle
             </Button>
+          ) : undefined
+        }
+        footer={
+          fazlasiVar ? (
+            <Link
+              href="/bildirimler"
+              onClick={() => setOpen(false)}
+              className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-brand-600 hover:text-brand-700 transition-colors"
+            >
+              Tümünü gör
+              <Icon name="forward" size={15} />
+            </Link>
           ) : undefined
         }
       >
@@ -158,7 +197,7 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
             />
           ) : (
             <div className="space-y-1.5">
-              {inbox.notifications.map((n) => (
+              {gosterilenBildirimler.map((n) => (
                 <NotificationItem key={n.id} n={n} onOpen={() => openItem(n)} />
               ))}
             </div>
@@ -171,7 +210,7 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
           />
         ) : (
           <div className="space-y-1.5">
-            {inbox.announcements.map((a) => (
+            {gosterilenDuyurular.map((a) => (
               <AnnouncementItem
                 key={a.id}
                 a={a}
@@ -180,14 +219,14 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
             ))}
           </div>
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 }
 
 /* --------------------------------------------------------------- parçalar */
 
-function TabButton({
+export function TabButton({
   active, count, onClick, children,
 }: {
   active: boolean; count: number; onClick: () => void; children: React.ReactNode;
@@ -216,7 +255,7 @@ function TabButton({
   );
 }
 
-function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: () => void }) {
+export function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: () => void }) {
   const unread = !n.readAt;
   return (
     <button
@@ -255,7 +294,7 @@ function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: () => voi
   );
 }
 
-function AnnouncementItem({ a, onRead }: { a: AnnouncementRow; onRead: () => void }) {
+export function AnnouncementItem({ a, onRead }: { a: AnnouncementRow; onRead: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const unread = !a.readAt;
   return (

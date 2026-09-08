@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import type { BankAccount, BankChangeRequestRow, LedgerSummary, PaymentRow, PeriodStatus } from "@/lib/payments";
 import { money, amountIn } from "@/lib/format";
-import { Button, Card, Empty, Icon, Stat } from "./ui";
+import { Button, Card, Empty, Icon, Stat, PrefToggle } from "./ui";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
 import { AccountSidebar, type AccountTabDef } from "./AccountSidebar";
@@ -576,18 +576,3 @@ function ContactPrefsTab() {
   );
 }
 
-function PrefToggle({
-  label, checked, onChange,
-}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-ink-900/[0.02] cursor-pointer transition-colors">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded border-line accent-brand-600 shrink-0"
-      />
-      <span className="text-[13px] text-ink-700">{label}</span>
-    </label>
-  );
-}

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Alert, Field, buttonClass, inputClass } from "./AuthShell";
+import { PasswordInput } from "./PasswordInput";
 import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
 
 /** Şifre gücü — sunucudaki kuralın aynısı, kullanıcıya anında geri bildirim. */
@@ -123,8 +124,8 @@ export function RegisterForm() {
       </Field>
 
       <Field label="Şifre" hint="En az 10 karakter, en az bir rakam.">
-        <input type="password" required autoComplete="new-password" className={inputClass}
-               value={f.password} onChange={set("password")} />
+        <PasswordInput required autoComplete="new-password"
+                       value={f.password} onChange={set("password")} />
         {st.text && (
           <div className="flex items-center gap-2 mt-1.5">
             <div className="flex gap-1 flex-1">
@@ -141,8 +142,8 @@ export function RegisterForm() {
       </Field>
 
       <Field label="Şifre tekrar">
-        <input type="password" required autoComplete="new-password" className={inputClass}
-               value={f.password2} onChange={set("password2")} />
+        <PasswordInput required autoComplete="new-password"
+                       value={f.password2} onChange={set("password2")} />
         {mismatch && <span className="block text-[11.5px] text-accent-rose mt-1">Şifreler uyuşmuyor.</span>}
       </Field>
 

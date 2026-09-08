@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Alert, Field, buttonClass, inputClass } from "./AuthShell";
+import { PasswordInput } from "./PasswordInput";
 
 export function LoginForm() {
   const router = useRouter();
@@ -120,9 +121,9 @@ export function LoginForm() {
       </Field>
 
       <Field label="Şifre">
-        <input
-          type="password" required autoComplete="current-password"
-          className={inputClass} value={password}
+        <PasswordInput
+          required autoComplete="current-password"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••••"
         />
