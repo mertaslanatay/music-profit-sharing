@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
@@ -10,7 +10,44 @@ import { scopeFor, isAdmin, needsMfaVerification, audit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({
+// Vercel'in varsayılan fonksiyon bütçesi (Hobby'de 10 sn) bu sayfa için
+// yetersiz kalabiliyordu: süre dolunca istek PLATFORM tarafından öldürülüyor
+// ve kullanıcı okunabilir bir mesaj yerine opak bir "Application error ...
+// Digest" ekranı görüyordu. Bütçeyi açıkça yükseltiyoruz; kendi kapımız
+// (src/lib/db.ts, GATE_WAIT_MS = 20 sn) bunun ALTINDA vazgeçtiği için hata
+// bize düşüyor ve ekranda gerçek sebep yazıyor.
+export const maxDuration = 30;
+
+/**
+ * Next.js, sunucu bileşenlerinde OLUŞAN hataların mesajını üretimde
+ * güvenlik gereği İSTEMCİYE HİÇ göndermez — geriye yalnızca bir digest
+ * kalır. Yani bir hatayı ekranda görebilmemizin TEK yolu onu yakalayıp
+ * kendimiz basmaktır. Bu sarmalayıcı tam olarak bunun içindir: sayfanın
+ * herhangi bir yerinde (getSession dahil) patlayan her şey artık kırmızı
+ * kutuda gerçek mesajıyla görünür.
+ *
+ * DİKKAT: redirect() ve notFound() de "hata fırlatarak" çalışır. Onları
+ * yutarsak giriş yönlendirmesi bozulur. Elle digest kontrolü yazmak yerine
+ * Next.js'in tam bu iş için sağladığı unstable_rethrow() kullanılıyor —
+ * çerçeveye ait her iç sinyali (redirect, notFound, dinamik render
+ * bailout'ları) aynen geçirir, yalnızca GERÇEK hatalarda geri döner.
+ * (Elle yazsaydık eksik kalırdı: bu sürümde notFound() artık
+ * "NEXT_NOT_FOUND" değil "NEXT_HTTP_ERROR_FALLBACK;404" digest'i atıyor.)
+ */
+export default async function Page(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  try {
+    return await Dash(props);
+  } catch (e) {
+    unstable_rethrow(e);
+    // Vercel loglarında aranabilir bir işaret bırak.
+    console.error("[pulse] ana sayfa sunucu hatası:", e);
+    return <Fail message={e instanceof Error ? e.message : String(e)} />;
+  }
+}
+
+async function Dash({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;

@@ -65,7 +65,7 @@ declare global {
  */
 class Gate {
   private permits: number;
-  private queue: Array<() => void> = [];
+  private queue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout }> = [];
 
   constructor(n: number) {
     this.permits = n;
@@ -76,21 +76,54 @@ class Gate {
       this.permits -= 1;
       return;
     }
-    await new Promise<void>((resolve) => this.queue.push(resolve));
+    // ZAMAN AŞIMI NEDEN VAR: ilk sürümde kapı sınırsız bekliyordu. O hâliyle
+    // veritabanı yavaşladığında sorgular sonsuza kadar sırada bekliyor,
+    // isteği Vercel'in KENDİ fonksiyon zaman aşımı öldürüyordu — ve o
+    // durumda kullanıcı okunabilir bir mesaj değil, yine opak bir
+    // "Application error ... Digest" ekranı görüyordu. Artık kapı, platform
+    // bizi öldürmeden ÖNCE anlaşılır bir hatayla vazgeçiyor.
+    await new Promise<void>((resolve, reject) => {
+      const entry = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const i = this.queue.indexOf(entry);
+          if (i >= 0) this.queue.splice(i, 1);
+          reject(
+            new Error(
+              `Veritabanı sırası ${Math.round(GATE_WAIT_MS / 1000)} saniyede açılmadı ` +
+                `(${this.queue.length + 1} iş bekliyordu). Veritabanı şu an çok yavaş ` +
+                `ya da yanıt vermiyor.`
+            )
+          );
+        }, GATE_WAIT_MS),
+      };
+      this.queue.push(entry);
+    });
   }
 
   release(): void {
     const next = this.queue.shift();
     // İzni doğrudan sıradakine devret — sayacı artırıp tekrar azaltmak
     // arada başka bir çağrının araya girmesine (starvation) yol açardı.
-    if (next) next();
-    else this.permits += 1;
+    if (next) {
+      clearTimeout(next.timer);
+      next.resolve();
+    } else {
+      this.permits += 1;
+    }
   }
 
   get waiting(): number {
     return this.queue.length;
   }
 }
+
+/**
+ * Kapıda en fazla ne kadar beklenir. Vercel fonksiyon bütçesinin (page.tsx'te
+ * maxDuration = 30 sn) ALTINDA olmalı ki hata bize düşsün, platforma değil.
+ */
+const GATE_WAIT_MS = Number(process.env.DB_GATE_WAIT_MS ?? 20_000);
 
 /**
  * Havuz boyutu.
