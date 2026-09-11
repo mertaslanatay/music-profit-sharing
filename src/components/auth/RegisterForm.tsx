@@ -115,7 +115,7 @@ export function RegisterForm() {
           <input
             type="tel"
             autoComplete="tel-national"
-            className={inputClass}
+            className={inputClass + " min-w-0"}
             value={f.phone}
             onChange={set("phone")}
             placeholder="5xx xxx xx xx"

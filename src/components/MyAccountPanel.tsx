@@ -521,7 +521,7 @@ function ContactPrefsTab() {
           </select>
           <input
             type="tel"
-            className="flex-1 rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
+            className="flex-1 min-w-0 rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
             value={prefs.phone}
             onChange={(e) => set("phone", e.target.value)}
             placeholder="5xx xxx xx xx"
