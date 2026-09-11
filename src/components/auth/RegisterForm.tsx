@@ -101,8 +101,14 @@ export function RegisterForm() {
 
       <Field label="İletişim numarası" hint="İsteğe bağlı — sana ulaşmamız gerektiğinde kullanılır.">
         <div className="flex gap-2">
+          {/* inputClass'ta w-full var; ona "w-[128px]" eklemek işe YARAMIYOR —
+              Tailwind .w-full kuralını sonra yazdığı için select satırın
+              tamamını (300px) kaplıyor, shrink-0 yüzünden de daralmıyordu ve
+              telefon kutusunu kartın dışına itiyordu. flex-basis, esnek
+              satırda ana eksen boyutunu width'ten bağımsız belirlediği için
+              sınıf sırasından etkilenmez. */}
           <select
-            className={inputClass + " w-[128px] shrink-0"}
+            className={inputClass + " basis-[128px] grow-0 shrink-0"}
             value={f.phoneCountry}
             onChange={setSel("phoneCountry")}
           >
@@ -115,7 +121,7 @@ export function RegisterForm() {
           <input
             type="tel"
             autoComplete="tel-national"
-            className={inputClass + " min-w-0"}
+            className={inputClass + " basis-0 grow min-w-0"}
             value={f.phone}
             onChange={set("phone")}
             placeholder="5xx xxx xx xx"
