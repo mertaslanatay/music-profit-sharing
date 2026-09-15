@@ -21,7 +21,8 @@
     "verify:transfers": "tsx scripts/verify-transfers.mts",
     "verify:support": "tsx scripts/verify-support.mts",
     "verify:preview": "tsx scripts/verify-preview.mts",
-    "verify:songscope": "tsx scripts/verify-songscope.mts"
+    "verify:songscope": "tsx scripts/verify-songscope.mts",
+    "verify:ledger": "tsx scripts/verify-ledger.mts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

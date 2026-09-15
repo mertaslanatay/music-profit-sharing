@@ -210,6 +210,35 @@ function LedgerDrawer({
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState<Set<string>>(new Set());
+  /**
+   * Görünüm tercihleri. Kullanıcı başına, tarayıcıda saklanıyor: her ödeme
+   * kaydında yeniden ayarlamak zorunda kalmasın. Okuma/yazma try/catch içinde
+   * — gizli sekmede veya site verisi kapalıyken erişim hata fırlatabiliyor.
+   */
+  const [etiketModu, setEtiketModu] = useState<"ay" | "excel">("ay");
+  const [yuklemeGrupla, setYuklemeGrupla] = useState(false);
+
+  useEffect(() => {
+    try {
+      const e = localStorage.getItem("pulse.odeme.etiket");
+      if (e === "ay" || e === "excel") setEtiketModu(e);
+      setYuklemeGrupla(localStorage.getItem("pulse.odeme.grupla") === "1");
+    } catch { /* tercih okunamadı — varsayılanlarla devam */ }
+  }, []);
+
+  const etiketSec = (v: "ay" | "excel") => {
+    setEtiketModu(v);
+    try { localStorage.setItem("pulse.odeme.etiket", v); } catch { /* yoksay */ }
+  };
+  const gruplaSec = (v: boolean) => {
+    setYuklemeGrupla(v);
+    try { localStorage.setItem("pulse.odeme.grupla", v ? "1" : "0"); } catch { /* yoksay */ }
+  };
+
+  /** Satırda hangi yazı görünecek — ay adı mı, Excel'deki ham etiket mi. */
+  const donemYazisi = (p: PeriodStatus) =>
+    etiketModu === "excel" ? (p.label || p.display) : p.display;
+
   const [currency, setCurrency] = useState<Currency>(artist.bank?.currency ?? "USD");
   const [rate, setRate] = useState("");
   const [note, setNote] = useState("");
@@ -253,6 +282,35 @@ function LedgerDrawer({
     if (next.has(id)) next.delete(id); else next.add(id);
     setSel(next);
   };
+
+  /** Verilen dönemlerin hepsini seç / hepsini bırak. */
+  const topluSec = (ids: string[], sec: boolean) => {
+    const next = new Set(sel);
+    for (const id of ids) { if (sec) next.add(id); else next.delete(id); }
+    setSel(next);
+  };
+
+  const hepsiSecili = open.length > 0 && open.every((p) => sel.has(p.periodId));
+
+  /**
+   * Açık dönemleri geldikleri yüklemeye (Excel / ödeme partisi) göre grupla.
+   * Bir dönem birden fazla yüklemeden beslenebildiği için BİRİNCİ dilim
+   * (en yüksek net) esas alınır — böylece her dönem tam olarak bir grupta
+   * görünür ve iki grubu birden seçmek aynı dönemi iki kez saymaz.
+   */
+  const gruplar = useMemo(() => {
+    const m = new Map<string, { id: string; baslik: string; donemler: PeriodStatus[] }>();
+    for (const p of open) {
+      const birincil = p.reports[0];
+      const id = birincil?.reportId ?? "—";
+      const baslik = birincil?.title ?? "Yükleme bilgisi yok";
+      const g = m.get(id) ?? { id, baslik, donemler: [] };
+      g.donemler.push(p);
+      m.set(id, g);
+    }
+    // Grup sırası: içindeki en yeni dönem üstte (liste zaten sort desc geliyor).
+    return [...m.values()];
+  }, [open]);
 
   const submit = async () => {
     setBusy(true); setErr(null);
@@ -327,29 +385,97 @@ function LedgerDrawer({
               </p>
             ) : (
               <>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2.5">
+                  <button
+                    onClick={() => topluSec(open.map((p) => p.periodId), !hepsiSecili)}
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-brand-600 hover:text-brand-700 transition-colors"
+                  >
+                    <span className={clsx(
+                      "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
+                      hepsiSecili ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+                    )}>
+                      {hepsiSecili && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
+                    </span>
+                    {hepsiSecili ? "Seçimi temizle" : `Tümünü seç (${open.length})`}
+                  </button>
+
+                  <span className="text-[12px] text-ink-400">
+                    {sel.size > 0 ? `${sel.size} dönem seçili` : "henüz seçim yok"}
+                  </span>
+
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <Segment
+                      value={etiketModu}
+                      onChange={(v) => etiketSec(v as "ay" | "excel")}
+                      options={[
+                        { v: "ay", label: "Ay adı" },
+                        { v: "excel", label: "Excel etiketi" },
+                      ]}
+                    />
+                    <Segment
+                      value={yuklemeGrupla ? "yukleme" : "duz"}
+                      onChange={(v) => gruplaSec(v === "yukleme")}
+                      options={[
+                        { v: "duz", label: "Dönem listesi" },
+                        { v: "yukleme", label: "Yüklemeye göre" },
+                      ]}
+                    />
+                  </div>
+                </div>
+
                 <p className="text-[12px] text-ink-500 mb-2.5">
                   Kapatacağın dönemleri seç. Her dönem kalan tutarıyla kapatılır.
                 </p>
+
                 <div className="space-y-1 mb-4">
-                  {open.map((p) => (
-                    <button
-                      key={p.periodId}
-                      onClick={() => toggle(p.periodId)}
-                      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-ink-900/[0.03] transition-colors"
-                    >
-                      <span className={clsx(
-                        "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
-                        sel.has(p.periodId) ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
-                      )}>
-                        {sel.has(p.periodId) && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
-                      </span>
-                      <span className="text-[13px] text-ink-900 flex-1 text-left">{p.display}</span>
-                      {p.paid > 0.005 && (
-                        <span className="text-[11px] text-ink-400">{money(p.paid)} ödenmiş</span>
-                      )}
-                      <span className="text-[13px] font-semibold text-ink-900 tabular">{money(p.remaining)}</span>
-                    </button>
-                  ))}
+                  {yuklemeGrupla
+                    ? gruplar.map((g) => {
+                        const ids = g.donemler.map((p) => p.periodId);
+                        const hepsi = ids.every((id) => sel.has(id));
+                        const toplam = g.donemler.reduce((a, p) => a + p.remaining, 0);
+                        return (
+                          <div key={g.id} className="rounded-xl border border-line overflow-hidden">
+                            <button
+                              onClick={() => topluSec(ids, !hepsi)}
+                              className="w-full flex items-center gap-3 px-3 py-2 bg-ink-900/[0.03] hover:bg-ink-900/[0.05] transition-colors"
+                            >
+                              <span className={clsx(
+                                "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
+                                hepsi ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+                              )}>
+                                {hepsi && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
+                              </span>
+                              <span className="text-[12.5px] font-semibold text-ink-900 flex-1 text-left truncate">
+                                {g.baslik}
+                              </span>
+                              <span className="text-[11px] text-ink-400 shrink-0">{g.donemler.length} dönem</span>
+                              <span className="text-[12.5px] font-semibold text-ink-900 tabular shrink-0">
+                                {money(toplam)}
+                              </span>
+                            </button>
+                            <div className="p-1">
+                              {g.donemler.map((p) => (
+                                <PeriodRow
+                                  key={p.periodId}
+                                  yazi={donemYazisi(p)}
+                                  p={p}
+                                  secili={sel.has(p.periodId)}
+                                  onToggle={() => toggle(p.periodId)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })
+                    : open.map((p) => (
+                        <PeriodRow
+                          key={p.periodId}
+                          yazi={donemYazisi(p)}
+                          p={p}
+                          secili={sel.has(p.periodId)}
+                          onToggle={() => toggle(p.periodId)}
+                        />
+                      ))}
                 </div>
 
                 <div className="rounded-xl bg-ink-900/[0.03] p-4 space-y-3">
@@ -428,7 +554,10 @@ function LedgerDrawer({
                       "w-2 h-2 rounded-full shrink-0",
                       done ? "bg-brand-500" : p.paid > 0.005 ? "bg-accent-amber" : "bg-ink-300"
                     )} />
-                    <span className="text-[13px] text-ink-900 flex-1">{p.display}</span>
+                    {/* Üstteki seçimle aynı yazımı kullanıyor — biri "Mart 2026"
+                        diğeri "P03 26(Mar 26)" deseydi aynı dönem iki farklı
+                        şeymiş gibi görünürdü. */}
+                    <span className="text-[13px] text-ink-900 flex-1 truncate">{donemYazisi(p)}</span>
                     <span className="text-[12px] text-ink-400 tabular w-20 text-right">{money(p.net)}</span>
                     <span className={clsx("text-[11.5px] font-medium w-24 text-right",
                       done ? "text-brand-600" : p.paid > 0.005 ? "text-accent-amber" : "text-ink-400")}>
@@ -734,5 +863,69 @@ function Stat({
       <p className={clsx("text-[24px] font-semibold tabular mt-1.5 leading-none", color)}>{value}</p>
       {sub && <p className="text-[11.5px] text-ink-400 mt-2">{sub}</p>}
     </Card>
+  );
+}
+
+/* ------------------------------------------- ödeme seçimi yardımcıları */
+
+/**
+ * Tek bir dönem satırı. Hem düz listede hem yükleme gruplarının içinde
+ * kullanılıyor — iki yerde ayrı ayrı yazılsaydı biri güncellenip diğeri
+ * unutulurdu.
+ */
+function PeriodRow({
+  p, yazi, secili, onToggle,
+}: { p: PeriodStatus; yazi: string; secili: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-ink-900/[0.03] transition-colors"
+    >
+      <span className={clsx(
+        "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
+        secili ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+      )}>
+        {secili && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
+      </span>
+      <span className="text-[13px] text-ink-900 flex-1 text-left truncate">{yazi}</span>
+      {/* Dönem birden fazla yüklemeden besleniyorsa belirt: gruplanmış
+          görünümde yalnızca BİRİNCİ yüklemenin altında listeleniyor, bunu
+          gizlemek yanıltıcı olurdu. */}
+      {p.reports.length > 1 && (
+        <span
+          className="text-[10.5px] px-1.5 py-0.5 rounded bg-ink-900/[0.06] text-ink-500 shrink-0"
+          title={p.reports.map((r) => r.title).join(" · ")}
+        >
+          +{p.reports.length - 1} yükleme
+        </span>
+      )}
+      {p.paid > 0.005 && (
+        <span className="text-[11px] text-ink-400 shrink-0">{money(p.paid)} ödenmiş</span>
+      )}
+      <span className="text-[13px] font-semibold text-ink-900 tabular shrink-0">{money(p.remaining)}</span>
+    </button>
+  );
+}
+
+/** Küçük iki/üç seçenekli anahtar (görünüm tercihleri için). */
+function Segment({
+  value, onChange, options,
+}: { value: string; onChange: (v: string) => void; options: { v: string; label: string }[] }) {
+  return (
+    <div className="inline-flex rounded-lg bg-ink-900/[0.05] p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.v}
+          onClick={() => onChange(o.v)}
+          aria-pressed={value === o.v}
+          className={clsx(
+            "px-2 py-1 rounded-md text-[11.5px] font-medium transition-colors",
+            value === o.v ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }

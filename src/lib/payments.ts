@@ -31,15 +31,32 @@ export interface BalanceRow {
   bank: BankAccount | null;
 }
 
+/** Bir dönemin hakedişine katkı veren tek bir yükleme (Excel / ödeme partisi). */
+export interface PeriodReportSlice {
+  reportId: string;
+  title: string;
+  net: number;
+}
+
 export interface PeriodStatus {
   periodId: string;
+  /** Excel'deki ham dönem etiketi — ör. "P03 26(Mar 26)". */
   label: string;
+  /** Ayrıştırılmış, okunaklı hâli — ör. "Mart 2026". */
   display: string;
   sort: number;
   gross: number;
   net: number;
   paid: number;
   remaining: number;
+  /**
+   * Bu dönemin hakedişi hangi yükleme(ler)den geldi — net'e göre azalan.
+   * Ödemeler ekranında "yükleme bazında grupla" seçeneği bunu kullanıyor.
+   * Bir dönem birden fazla Excel'den beslenebiliyor (aynı dönem için ek
+   * rapor yüklenmesi engellenmiyor, bkz. yükleme önizlemesi), o yüzden
+   * tekil bir rapor değil LİSTE tutuluyor; gruplama ilkini esas alır.
+   */
+  reports: PeriodReportSlice[];
 }
 
 export interface PaymentRow {
@@ -193,7 +210,7 @@ export async function getArtistLedger(artistId: string): Promise<{
     [artistId]
   );
 
-  const [pRows, payRows] = await Promise.all([
+  const [pRows, sliceRows, payRows] = await Promise.all([
     query<{
       period_id: string; label: string; sort: number; year: number;
       month: number | null; quarter: number | null;
@@ -205,6 +222,18 @@ export async function getArtistLedger(artistId: string): Promise<{
        join periods p on p.id = s.period_id
        where s.artist_id = $1
        order by p.sort desc`,
+      [artistId]
+    ),
+    // Dönemin hakedişini yükleme (rapor) bazında parçalar.
+    // v_artist_period_net ile AYNI kaynağı ve aynı net formülünü kullanıyor;
+    // bir dönemin dilimlerinin toplamı o dönemin net'ine eşit olmalı.
+    query<{ period_id: string; report_id: string; title: string; net: number }>(
+      `select c.period_id, c.report_id, r.title,
+              sum(c.gross * (r.received / nullif(r.gross, 0)))::float8 as net
+       from v_credits_effective c
+       join reports r on r.id = c.report_id
+       where c.artist_id = $1 and r.status in ('published','locked')
+       group by c.period_id, c.report_id, r.title`,
       [artistId]
     ),
     query<{
@@ -234,6 +263,16 @@ export async function getArtistLedger(artistId: string): Promise<{
     ),
   ]);
 
+  // Dilimleri döneme göre topla, net'e göre azalan sırala: ilk eleman o
+  // dönemin "birincil yüklemesi" olur ve gruplama ona bakar.
+  const dilimler = new Map<string, PeriodReportSlice[]>();
+  for (const s of sliceRows) {
+    const liste = dilimler.get(s.period_id) ?? [];
+    liste.push({ reportId: s.report_id, title: s.title, net: n(s.net) });
+    dilimler.set(s.period_id, liste);
+  }
+  for (const liste of dilimler.values()) liste.sort((a, b) => b.net - a.net);
+
   return {
     summary: {
       earned: n(bal?.earned),
@@ -251,6 +290,7 @@ export async function getArtistLedger(artistId: string): Promise<{
       net: n(r.net),
       paid: n(r.paid),
       remaining: n(r.remaining),
+      reports: dilimler.get(r.period_id) ?? [],
     })),
     payments: payRows.map(mapPayment),
   };
