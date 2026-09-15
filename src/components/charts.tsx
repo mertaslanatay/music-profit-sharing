@@ -31,13 +31,15 @@ function TipBox({
   precise,
 }: {
   active?: boolean;
-  payload?: { value?: number; payload?: { name?: string; share?: number } }[];
+  payload?: { value?: number; payload?: { name?: string; full?: string; share?: number } }[];
   label?: string | number;
   precise?: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const p = payload[0];
-  const name = p.payload?.name ?? String(label ?? "");
+  // Eksende kısaltılmış bir etiket varsa ("Mar 26"), ipucunda TAM hâli
+  // gösterilir ("P03 26(Mar 26)") — kısaltma bilgi kaybettirmemeli.
+  const name = p.payload?.full ?? p.payload?.name ?? String(label ?? "");
   return (
     <div className="rounded-xl bg-ink-900 px-3 py-2 shadow-pop">
       <p className="text-[11.5px] text-white/60 mb-0.5 max-w-[220px] truncate">{name}</p>
@@ -111,12 +113,31 @@ export function VBar({
   color = "#16A75C",
   precise,
 }: {
-  data: { name: string; value: number }[];
+  data: { name: string; value: number; full?: string }[];
   height?: number;
   color?: string;
   precise?: boolean;
 }) {
   if (data.length === 0) return <div style={{ height }} />;
+
+  /**
+   * Eksen etiketlerinin seyreltilmesi.
+   *
+   * Eskiden interval={0} ile HER etiket zorla çiziliyordu. 60 dönemlik bir
+   * raporda bu, 44px'lik şeride sığmayan onlarca eğik yazının üst üste
+   * binmesi demekti — okunaklı bir eksen değil, gri bir leke.
+   *
+   * Kaç etiket sığdığı çubuk sayısına göre hesaplanıyor. Recharts'ta
+   * interval=k, her (k+1). etiketi çizer.
+   */
+  const HEDEF_ETIKET = 7;
+  const interval = data.length <= HEDEF_ETIKET ? 0 : Math.ceil(data.length / HEDEF_ETIKET) - 1;
+
+  // Etiketler kısaysa (ör. "Mar 26") düz yazmak eğik yazmaktan çok daha
+  // okunaklı; uzun kalırsa eski eğik düzene düşülüyor.
+  const enUzun = data.reduce((m, d) => Math.max(m, d.name.length), 0);
+  const duz = enUzun <= 9;
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: -12 }}>
@@ -131,10 +152,11 @@ export function VBar({
           tickLine={false}
           axisLine={false}
           tick={{ fontSize: 11.5, fill: "#8A97A6" }}
-          interval={0}
-          height={44}
-          angle={-32}
-          textAnchor="end"
+          interval={interval}
+          height={duz ? 26 : 44}
+          angle={duz ? 0 : -32}
+          textAnchor={duz ? "middle" : "end"}
+          minTickGap={4}
         />
         <YAxis
           tickLine={false}

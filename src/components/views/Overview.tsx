@@ -2,6 +2,7 @@
 
 import type { Result } from "@/lib/types";
 import { money, moneySmart, num, pct, periodSort, topN } from "@/lib/format";
+import { parsePeriod, periodShort } from "@/lib/period";
 import { flagOf } from "@/lib/flags";
 import { Avatar, Card, CardHead, Icon, RankRow, Stat } from "../ui";
 import { CHART_COLORS, Donut, HBar, VBar } from "../charts";
@@ -35,9 +36,16 @@ export function Overview({
     share: t.gross ? d.value / t.gross : 0,
   }));
 
+  // Eksende Excel'in ham dönem etiketi ("P03 26(Mar 26)") kullanılıyordu;
+  // 60 dönemlik bir raporda bu yazılar birbirine girip okunamaz hâle
+  // geliyordu. Eksende kısa biçim ("Mar 26"), ipucunda ham etiketin tamamı.
   const periodData = Object.entries(res.periods)
     .sort((a, b) => periodSort(a[0]) - periodSort(b[0]))
-    .map(([name, value]) => ({ name, value }));
+    .map(([label, value]) => ({
+      name: periodShort(parsePeriod(label)),
+      full: label,
+      value,
+    }));
 
   const collabGross = res.artists.reduce((a, x) => a + x.primaryGross + x.featureGross, 0);
   const topSongs = res.songs.slice(0, 6);
