@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { Result } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
@@ -67,6 +67,60 @@ export function Songs({
   // yazılacağı belirsiz olurdu.
   const canOpen = !!reportId && reportId !== "all";
 
+  /**
+   * Seçili ödeme partisinde gerçekten kredisi olan şarkılar.
+   *
+   * Bu liste olmadan 🔀 simgesi HER satırda çıkıyordu: tablo dönem seçicisiyle
+   * süzülüyor, gelir devri kapsamı ise ayrı bir parti seçicisi olduğu için
+   * ikisi örtüşmeyebiliyor. Kullanıcı partide kaydı olmayan bir şarkıya
+   * tıklayınca drawer açılıp "bu partide kaydı yok" diyordu — boşa tıklama.
+   *
+   * null = henüz yükleniyor, failed = liste alınamadı.
+   */
+  const [transferIds, setTransferIds] = useState<Set<string> | null>(null);
+  const [transferIdsFailed, setTransferIdsFailed] = useState(false);
+
+  useEffect(() => {
+    if (!canOpen || !reportId) {
+      setTransferIds(null);
+      setTransferIdsFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setTransferIds(null);
+    setTransferIdsFailed(false);
+    void (async () => {
+      try {
+        const r = await fetch(`/api/reports/${encodeURIComponent(reportId)}/songs`);
+        if (!r.ok) throw new Error("liste alınamadı");
+        const j = (await r.json()) as { songIds?: string[] };
+        if (!cancelled) setTransferIds(new Set(j.songIds ?? []));
+      } catch {
+        // Liste alınamazsa özelliği KAPATMAYIZ — eski davranışa döneriz
+        // (simge her satırda çıkar). Bir ağ hatası yüzünden devir yapamaz
+        // duruma düşmek, ara sıra boşa tıklamaktan daha kötü olurdu.
+        if (!cancelled) setTransferIdsFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [canOpen, reportId]);
+
+  /** Bu şarkı için 🔀 simgesi gösterilsin mi? */
+  const canTransfer = (id?: string): boolean => {
+    if (!canOpen || !id) return false;
+    if (transferIdsFailed) return true;      // liste yok → eski davranış
+    if (!transferIds) return false;          // yükleniyor → simge bekletilir
+    return transferIds.has(id);
+  };
+
+  /**
+   * Ekrandaki listede kaç şarkı gerçekten devredilebilir. Liste en fazla 400
+   * satır gösterdiği için doğrudan sayılıyor — useMemo'ya değmez.
+   */
+  const transferableCount = canOpen
+    ? rows.reduce((n, s) => (canTransfer(s.id) ? n + 1 : n), 0)
+    : 0;
+
   const head = (key: SortKey, label: string, align: "left" | "right" = "right") => (
     <Th
       align={align}
@@ -127,8 +181,25 @@ export function Songs({
           <>
             <Icon name="split" size={13} className="text-brand-600 shrink-0" />
             <p className="text-[12px] text-ink-600">
-              Gelir devri açık — <b>{reportLabel ?? "seçili ödeme partisi"}</b> kapsamında; 🔀
-              simgesine tıkla. Bölüşümü düzenlemek için satıra tıkla.
+              {!transferIds && !transferIdsFailed ? (
+                <>
+                  Gelir devri açık — <b>{reportLabel ?? "seçili ödeme partisi"}</b> kapsamı
+                  yükleniyor…
+                </>
+              ) : transferableCount === 0 ? (
+                <>
+                  Gelir devri açık ama <b>listedeki hiçbir şarkının</b>{" "}
+                  {reportLabel ?? "seçili ödeme partisi"} içinde kaydı yok — üstteki{" "}
+                  <b>dönem seçicisi</b> bu partiyle örtüşmüyor. Bölüşümü düzenlemek için
+                  satıra yine de tıklayabilirsin.
+                </>
+              ) : (
+                <>
+                  Gelir devri açık — <b>{reportLabel ?? "seçili ödeme partisi"}</b> kapsamında;
+                  listedeki <b>{num(transferableCount)}</b> şarkıda 🔀 simgesi var, ona tıkla.
+                  Bölüşümü düzenlemek için satıra tıkla.
+                </>
+              )}
             </p>
             {onClearReport && (
               <button
@@ -193,7 +264,7 @@ export function Songs({
                             className="text-ink-300 shrink-0"
                           />
                         )}
-                        {canOpen && s.id && (
+                        {canTransfer(s.id) && s.id && (
                           <button
                             type="button"
                             title="Gelir hakkı devri (bu ödeme partisi + dönem için)"

@@ -20,7 +20,8 @@
     "verify:split": "tsx scripts/verify-split.mts",
     "verify:transfers": "tsx scripts/verify-transfers.mts",
     "verify:support": "tsx scripts/verify-support.mts",
-    "verify:preview": "tsx scripts/verify-preview.mts"
+    "verify:preview": "tsx scripts/verify-preview.mts",
+    "verify:songscope": "tsx scripts/verify-songscope.mts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
