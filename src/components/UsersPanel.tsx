@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { UserListRow } from "@/app/api/admin/users/route";
+import { foldKey } from "@/lib/normalize";
 import { Avatar, Button, Card, CardHead, Drawer, Empty, Icon, Td, Th } from "./ui";
 import { PaymentInfoBlock } from "./PaymentInfoBlock";
 
@@ -382,8 +383,17 @@ function UserDetail({
   const [canSeeLabelTotals, setCanSeeLabelTotals] = useState(u.canSeeLabelTotals);
   const [canSeeOtherArtists, setCanSeeOtherArtists] = useState(u.canSeeOtherArtists);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Sanatçı listesi uzun olabiliyor — kutucuğu gözle aramak yerine süzülüyor. */
+  const [artistQuery, setArtistQuery] = useState("");
 
   const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
+
+  // Arama Türkçe'ye duyarsız (foldKey): "agackakan" yazınca "Ağaçkakan" gelir.
+  const gorunenArtists = useMemo(() => {
+    const q = foldKey(artistQuery.trim());
+    if (!q) return artists;
+    return artists.filter((a) => foldKey(a.name).includes(q));
+  }, [artists, artistQuery]);
 
   const toggleLabel = (id: string) => {
     const s = new Set(selLabels);
@@ -544,21 +554,53 @@ function UserDetail({
         {/* Sanatçı erişimi */}
         {artists.length > 0 && (
           <div>
-            <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-              Sanatçı Erişimi
-            </label>
-            <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-line p-2 bg-white">
-              {artists.map((a) => (
-                <label key={a.id} className="flex items-center gap-2 text-[13px] text-ink-700 cursor-pointer py-0.5 px-1 rounded hover:bg-ink-900/[0.03]">
-                  <input
-                    type="checkbox"
-                    checked={selArtists.has(a.id)}
-                    onChange={() => toggleArtist(a.id)}
-                    className="rounded border-line text-brand-500 focus:ring-brand-500/30"
-                  />
-                  {a.name}
-                </label>
-              ))}
+            <div className="flex items-baseline justify-between gap-2 mb-1.5">
+              <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide">
+                Sanatçı Erişimi
+              </label>
+              {/* Arama süzerken seçili olanlar gözden kaybolabiliyor; sayı
+                  hep görünür kalsın ki kaç sanatçı işaretli olduğu belli olsun. */}
+              <span className="text-[11.5px] text-ink-400 shrink-0">
+                {selArtists.size > 0 ? `${selArtists.size} seçili` : "seçim yok"}
+              </span>
+            </div>
+            <div className="rounded-xl border border-line bg-white overflow-hidden">
+              <div className="relative border-b border-line">
+                <Icon
+                  name="search"
+                  size={14}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none"
+                />
+                <input
+                  type="search"
+                  value={artistQuery}
+                  onChange={(e) => setArtistQuery(e.target.value)}
+                  placeholder={`Sanatçı ara — ${artists.length} kayıt`}
+                  aria-label="Sanatçı ara"
+                  className="w-full min-w-0 pl-8 pr-2.5 py-2 text-[13px] bg-transparent outline-none placeholder:text-ink-300"
+                />
+              </div>
+              {/* max-h-40 (160px) çok kısaydı: uzun listede aynı anda ancak
+                  4-5 sanatçı görünüyordu. */}
+              <div className="max-h-[22rem] overflow-y-auto scroll-thin space-y-1 p-2">
+                {gorunenArtists.length === 0 ? (
+                  <p className="text-[12.5px] text-ink-400 py-6 text-center">
+                    &ldquo;{artistQuery.trim()}&rdquo; ile eşleşen sanatçı yok.
+                  </p>
+                ) : (
+                  gorunenArtists.map((a) => (
+                    <label key={a.id} className="flex items-center gap-2 text-[13px] text-ink-700 cursor-pointer py-0.5 px-1 rounded hover:bg-ink-900/[0.03]">
+                      <input
+                        type="checkbox"
+                        checked={selArtists.has(a.id)}
+                        onChange={() => toggleArtist(a.id)}
+                        className="rounded border-line text-brand-500 focus:ring-brand-500/30 shrink-0"
+                      />
+                      <span className="min-w-0 truncate">{a.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}

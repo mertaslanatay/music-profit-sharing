@@ -1,7 +1,8 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { colorFor, initials, money, moneySmart, num, pct } from "@/lib/format";
 
 export function Card({
@@ -428,6 +429,29 @@ function bodyCoz() {
   if (acikDialogSayisi === 0) document.body.style.overflow = oncekiBodyOverflow;
 }
 
+/**
+ * Dialogları <body>'ye taşır.
+ *
+ * NEDEN ŞART: `position: fixed` bir eleman, atalarından biri transform /
+ * filter / perspective taşıyorsa artık EKRANA değil O ATAYA göre konumlanır.
+ * Dashboard içeriği `.rise` sınıfıyla sarılı ve o animasyon
+ * `animation-fill-mode: both` ile tanımlı — bitince bile transform uygulanmış
+ * kalıyor (matrix(1,0,0,1,0,0)). Sonuç: drawer, ekranın değil 2585px'lik
+ * içerik kutusunun sınırlarına yapışıyordu; sayfa aşağı kaydırılmışken
+ * drawer'ın üstü ekranın 1684px yukarısında kalıyor, kullanıcı ortasını
+ * görüp "boş açıldı" sanıyordu.
+ *
+ * Ölçümle bulundu (getBoundingClientRect: top -1684, height 2585, görünür
+ * alan 900). Portal, dialogu o alt ağaçtan tamamen çıkardığı için kalıcı
+ * çözüm: ileride hangi sarmalayıcıya animasyon eklenirse eklensin etkilenmez.
+ */
+function usePortalHedefi(open: boolean): HTMLElement | null {
+  const [hedef, setHedef] = useState<HTMLElement | null>(null);
+  // Sunucuda document yok; portal yalnızca istemcide kurulur.
+  useEffect(() => { setHedef(open ? document.body : null); }, [open]);
+  return hedef;
+}
+
 function useDialogChrome(open: boolean, onClose: () => void) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef(onClose);
@@ -507,10 +531,11 @@ export function Drawer({
   // için bu ekranın klavyeyle kullanılabilir olması artık daha da önemli.
   const panelRef = useDialogChrome(open, onClose);
   const basligiId = useId();
+  const portalHedefi = usePortalHedefi(open);
 
-  if (!open) return null;
+  if (!open || !portalHedefi) return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
@@ -543,7 +568,8 @@ export function Drawer({
         </div>
         <div className="p-5">{children}</div>
       </div>
-    </>
+    </>,
+    portalHedefi
   );
 }
 
@@ -581,10 +607,12 @@ export function Modal({
 }) {
   const panelRef = useDialogChrome(open, onClose);
   const basligiId = useId();
+  // Drawer ile aynı sebep — bkz. usePortalHedefi.
+  const portalHedefi = usePortalHedefi(open);
 
-  if (!open) return null;
+  if (!open || !portalHedefi) return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
@@ -620,7 +648,8 @@ export function Modal({
           {footer && <div className="border-t border-line px-5 py-3 shrink-0">{footer}</div>}
         </div>
       </div>
-    </>
+    </>,
+    portalHedefi
   );
 }
 
