@@ -6,7 +6,8 @@ import type { UserListRow } from "@/app/api/admin/users/route";
 import { Icon } from "@/components/ui";
 import type { ViewerBadge } from "@/components/Sidebar";
 import { getSession, requestMeta } from "@/lib/session";
-import { authConfigured } from "@/lib/supabase/server";
+import { authConfigured, supabaseServer } from "@/lib/supabase/server";
+import { readMfaState, mfaOkFromState } from "@/lib/mfa";
 import { audit, isAdmin, needsMfaVerification, type Viewer } from "@/lib/access";
 import { query } from "@/lib/db";
 import { listSeparators } from "@/lib/separators";
@@ -41,6 +42,24 @@ export default async function AdminPage() {
         isAdmin: isAdmin(viewer),
       }
     : null;
+
+  // İki adımlı doğrulama durumu — "Profilim" sekmesindeki Güvenlik bloğu için.
+  // Sunucuda okunup prop olarak geçiliyor: yeni bir API ucu açmaya gerek yok
+  // ve sayfa açılırken fazladan bir tur atılmıyor.
+  //
+  // Buraya gelebiliyorsak oturum zaten 2FA gereksinimini karşılıyor
+  // (yukarıdaki needsMfaVerification kontrolü aksi hâlde /guvenlik'e
+  // yönlendirir), yani panelde yalnızca "aktif" veya "kurulum" hâli görünür;
+  // kod isteyen ara adım /guvenlik'te kalır.
+  let mfa: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null = null;
+  if (authConfigured() && viewer) {
+    const durum = await readMfaState(await supabaseServer());
+    mfa = {
+      hasVerifiedFactor: durum.hasVerifiedFactor,
+      isFullySatisfied: mfaOkFromState(durum),
+      factorId: durum.factorId,
+    };
+  }
 
   let reports: ReportRow[] = [];
   let balances: BalanceRow[] = [];
@@ -125,6 +144,7 @@ export default async function AdminPage() {
       artists={artists}
       separators={separators}
       viewer={viewerBadge}
+      mfa={mfa}
     />
   );
 }

@@ -13,23 +13,34 @@ export function TwoFactorSetup({
   hasVerifiedFactor,
   isFullySatisfied,
   existingFactorId,
+  onDone,
 }: {
   hasVerifiedFactor: boolean;
   isFullySatisfied: boolean;
   existingFactorId: string | null;
+  /**
+   * Durum değiştikten sonra ne yapılacağı. Verilmezse eskisi gibi tam sayfa
+   * yenileme yapılır (/guvenlik sayfasının davranışı).
+   *
+   * Yönetim panelinde bu şart: sert yönlendirme sekme durumunu sıfırlayıp
+   * kullanıcıyı Raporlar'a düşürüyordu — 2FA'yı açan kişi sonucu göremeden
+   * başka bir ekranda buluyordu kendini. Panel router.refresh() geçiyor:
+   * sunucu verisi tazeleniyor, sekme yerinde kalıyor.
+   */
+  onDone?: () => void;
 }) {
   if (hasVerifiedFactor && isFullySatisfied) {
-    return <ActiveState factorId={existingFactorId} />;
+    return <ActiveState factorId={existingFactorId} onDone={onDone} />;
   }
   if (hasVerifiedFactor && !isFullySatisfied) {
-    return <ChallengeState factorId={existingFactorId} />;
+    return <ChallengeState factorId={existingFactorId} onDone={onDone} />;
   }
-  return <EnrollState />;
+  return <EnrollState onDone={onDone} />;
 }
 
 /* --------------------------------------------------------- zaten kurulu */
 
-function ActiveState({ factorId }: { factorId: string | null }) {
+function ActiveState({ factorId, onDone }: { factorId: string | null; onDone?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -45,7 +56,7 @@ function ActiveState({ factorId }: { factorId: string | null }) {
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error); return; }
-      window.location.reload();
+      if (onDone) onDone(); else window.location.reload();
     } finally { setBusy(false); }
   };
 
@@ -78,7 +89,7 @@ function ActiveState({ factorId }: { factorId: string | null }) {
 
 /* --------------------------------------- faktör var ama oturum aal1'de */
 
-function ChallengeState({ factorId }: { factorId: string | null }) {
+function ChallengeState({ factorId, onDone }: { factorId: string | null; onDone?: () => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -94,7 +105,7 @@ function ChallengeState({ factorId }: { factorId: string | null }) {
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error); return; }
-      window.location.href = "/admin";
+      if (onDone) onDone(); else window.location.href = "/admin";
     } finally { setBusy(false); }
   };
 
@@ -121,7 +132,7 @@ function ChallengeState({ factorId }: { factorId: string | null }) {
 
 /* ------------------------------------------------------------- yeni kurulum */
 
-function EnrollState() {
+function EnrollState({ onDone }: { onDone?: () => void }) {
   const [step, setStep] = useState<"intro" | "scan">("intro");
   const [enroll, setEnroll] = useState<EnrollResponse | null>(null);
   const [code, setCode] = useState("");
@@ -150,7 +161,7 @@ function EnrollState() {
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error); return; }
-      window.location.href = "/admin";
+      if (onDone) onDone(); else window.location.href = "/admin";
     } finally { setBusy(false); }
   };
 

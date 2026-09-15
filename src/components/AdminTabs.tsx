@@ -30,7 +30,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   separators: { title: "Ayrıştırma", sub: "Sanatçı ayırma belirteçleri" },
   announcements: { title: "Duyurular", sub: "Kullanıcılara yayınlanan güncellemeler" },
   audit: { title: "Denetim", sub: "İşlem kaydı ve şüpheli aktivite" },
-  profile: { title: "Profilim", sub: "Kendi kişisel ve iletişim bilgilerin" },
+  profile: { title: "Profilim", sub: "Kendi kişisel bilgilerin, iletişim tercihlerin ve güvenlik ayarların" },
 };
 
 interface LabelOption { id: string; name: string }
@@ -44,6 +44,7 @@ export function AdminTabs({
   artists,
   separators,
   viewer,
+  mfa,
 }: {
   reports: ReportRow[];
   balances: BalanceRow[];
@@ -52,6 +53,8 @@ export function AdminTabs({
   artists: ArtistOption[];
   separators: Separator[];
   viewer?: ViewerBadge | null;
+  /** İki adımlı doğrulama durumu; kimlik doğrulama kapalıysa null. */
+  mfa?: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null;
 }) {
   const [tab, setTab] = useState<Tab>("reports");
   const [pendingBankRequests, setPendingBankRequests] = useState(0);
@@ -123,7 +126,7 @@ export function AdminTabs({
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
           {tab === "messages" && <SupportPanel mode="admin" />}
           {tab === "mail" && <AdminMailPanel users={users} />}
-          {tab === "profile" && <AdminProfilePanel />}
+          {tab === "profile" && <AdminProfilePanel mfa={mfa} />}
           {tab === "separators" && <SeparatorsPanel initial={separators} />}
           {tab === "announcements" && <AnnouncementsPanel />}
           {tab === "audit" && <AuditPanel />}

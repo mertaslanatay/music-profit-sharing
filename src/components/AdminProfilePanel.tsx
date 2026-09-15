@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
 import { Button, Card, Icon, PrefToggle } from "./ui";
+import { TwoFactorSetup } from "./TwoFactorSetup";
 
 interface Profil {
   firstName: string;
@@ -33,7 +34,12 @@ const BOS: Profil = {
  * E-POSTA SALT-OKUNUR: değiştirmek kimlik doğrulama kaydını da değiştirmek
  * demek; bu ekranın işi değil. Bilerek gösteriliyor ama düzenlenemiyor.
  */
-export function AdminProfilePanel() {
+export function AdminProfilePanel({
+  mfa,
+}: {
+  /** İki adımlı doğrulama durumu (sunucudan). Kimlik doğrulama kapalıysa null. */
+  mfa?: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null;
+} = {}) {
   const router = useRouter();
   const [p, setP] = useState<Profil>(BOS);
   // Sunucudan gelen son hâl: ad-soyad yalnızca GERÇEKTEN değiştiyse
@@ -258,6 +264,35 @@ export function AdminProfilePanel() {
           <span className="text-[12px] text-ink-400">Ad ve soyad boş bırakılamaz.</span>
         )}
       </div>
+
+      {/* Güvenlik — iki adımlı doğrulama.
+          Panelden çıkıp /guvenlik'e gitmeye gerek kalmasın diye buraya alındı.
+          Üstteki "Kaydet" düğmesinin DIŞINDA: kendi uçlarıyla (enroll/verify/
+          unenroll) anında çalışır, profil formuyla aynı kaydetmeye bağlı
+          değildir — yarısı kaydedilmiş bir 2FA durumu olamaz.
+
+          Buradaki işlem yalnızca KENDİ hesabını etkiler: Supabase MFA API'si
+          oturumun kendi faktörleri dışında bir şeye dokunamaz, yani bir
+          yönetici başka bir yöneticinin 2FA'sını buradan kapatamaz. */}
+      {mfa && (
+        <div>
+          <h3 className="text-[13px] font-semibold text-ink-500 uppercase tracking-wide mb-2">
+            Güvenlik
+          </h3>
+          <TwoFactorSetup
+            hasVerifiedFactor={mfa.hasVerifiedFactor}
+            isFullySatisfied={mfa.isFullySatisfied}
+            existingFactorId={mfa.factorId}
+            // Sert yönlendirme yerine sunucu verisini tazele: Profilim
+            // sekmesinden düşmeden sonucu (aktif/kapalı) görüyorsun.
+            onDone={() => router.refresh()}
+          />
+          <p className="text-[12px] text-ink-400 mt-2 leading-relaxed">
+            İsteğe bağlıdır. Açarsan girişte şifrenin yanında doğrulayıcı
+            uygulamandaki 6 haneli kod da istenir. Yalnızca kendi hesabını etkiler.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
