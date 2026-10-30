@@ -1,5 +1,6 @@
 "use client";
 
+import { countryTr } from "@/lib/flags";
 import { useMemo, useState } from "react";
 import type { ArtistAgg, Result, Tally } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
@@ -263,7 +264,9 @@ function Row({
         <div className="flex items-center gap-2.5">
           <Avatar name={a.name} size={30} />
           <div className="min-w-0">
-            <p className="font-medium text-ink-900 truncate max-w-[190px]">{a.name}</p>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }}
+              aria-label={`${a.name} — hakediş ayrıntısını aç`}
+              className="block text-left font-medium text-ink-900 truncate max-w-[190px] hover:text-brand-700 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-card">{a.name}</button>
             {a.spellings.length > 1 && (
               <p className="text-[10.5px] text-ink-300 truncate max-w-[190px]">
                 {a.spellings.length} yazım birleştirildi
@@ -301,7 +304,7 @@ function Row({
       </Td>
       <Td className="text-[12px] text-ink-500">
         <span className="truncate block max-w-[170px]">
-          {country?.name ?? "—"} · {platform?.name ?? "—"}
+          {country ? countryTr(country.name) : "—"} · {platform?.name ?? "—"}
         </span>
       </Td>
     </tr>

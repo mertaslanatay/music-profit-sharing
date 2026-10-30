@@ -61,7 +61,7 @@ export function PayoutPicker({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="rounded-xl border border-line px-3 py-1.5 text-[13px] font-medium bg-card outline-none focus:border-brand-500 transition-colors min-w-[240px]"
+          className="h-10 rounded-xl border border-line px-3 text-[13.5px] font-medium bg-card text-ink-900 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition-colors min-w-0 w-full sm:w-auto sm:min-w-[240px]"
         >
           <option value="all">{offLabel}</option>
           {published.map((r) => (
@@ -167,8 +167,8 @@ export function AnalysisPicker({
         : `${selected.length} dönem seçili`;
 
   return (
-    <div className="flex items-center gap-2.5" ref={box}>
-      <div className="w-9 h-9 rounded-xl bg-ink-900/[0.05] flex items-center justify-center shrink-0">
+    <div className="flex items-center gap-2.5 min-w-0" ref={box}>
+      <div className="hidden sm:flex w-9 h-9 rounded-xl bg-ink-900/[0.05] items-center justify-center shrink-0">
         <Icon name="clock" size={17} className="text-ink-700" />
       </div>
 
@@ -179,7 +179,7 @@ export function AnalysisPicker({
           type="button"
           onClick={() => toggleOpen("year")}
           className={clsx(
-            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-card outline-none transition-colors min-w-[130px] text-left inline-flex items-center gap-2",
+            "h-10 rounded-xl border px-3 text-[13.5px] font-medium bg-card text-ink-900 outline-none transition-colors min-w-[118px] sm:min-w-[130px] text-left inline-flex items-center gap-2",
             openWhich === "year" ? "border-brand-500" : "border-line hover:border-ink-300"
           )}
         >
@@ -234,7 +234,7 @@ export function AnalysisPicker({
           type="button"
           onClick={() => toggleOpen("period")}
           className={clsx(
-            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-card outline-none transition-colors min-w-[170px] text-left inline-flex items-center gap-2",
+            "h-10 rounded-xl border px-3 text-[13.5px] font-medium bg-card text-ink-900 outline-none transition-colors min-w-[140px] sm:min-w-[170px] text-left inline-flex items-center gap-2",
             openWhich === "period" ? "border-brand-500" : "border-line hover:border-ink-300"
           )}
         >

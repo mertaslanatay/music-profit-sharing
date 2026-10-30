@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ArtistAgg, Result } from "@/lib/types";
 import { money, moneySmart, num, pct, topN } from "@/lib/format";
-import { flagOf } from "@/lib/flags";
+import { countryTr, flagOf } from "@/lib/flags";
 import { artistSummaryText } from "@/lib/export";
 import { Avatar, Bar, Button, Icon, RankRow } from "../ui";
 
@@ -134,11 +134,22 @@ export function ArtistPanel({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Mini label="Tek sahipli" value={moneySmart(artist.soloGross, precise)} color="#3D5CFF" />
-            <Mini label="Ana sanatçı" value={moneySmart(artist.primaryGross, precise)} color="#FF7A2F" />
-            <Mini label="Featuring" value={moneySmart(artist.featureGross, precise)} color="#FFC234" />
-          </div>
+          {(() => {
+            // Sıfır olan bölüşüm türleri kart olarak gösterilmez — "$0,00" bilgi taşımıyor.
+            const minis = [
+              { label: "Tek sahipli", v: artist.soloGross, color: "#3D5CFF" },
+              { label: "Ana sanatçı", v: artist.primaryGross, color: "#FF7A2F" },
+              { label: "Featuring", v: artist.featureGross, color: "#FFC234" },
+            ].filter((m) => Math.abs(m.v) >= 0.005);
+            if (minis.length <= 1) return null;
+            return (
+              <div className={`grid gap-3 ${minis.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                {minis.map((m) => (
+                  <Mini key={m.label} label={m.label} value={moneySmart(m.v, precise)} color={m.color} />
+                ))}
+              </div>
+            );
+          })()}
 
           <Section title="Şarkı bazında hakediş" sub="Bölüşüm payı dahil">
             <div className="space-y-1.5">
@@ -187,7 +198,7 @@ export function ArtistPanel({
                 {countries.map((c) => (
                   <RankRow
                     key={c.name}
-                    name={c.name}
+                    name={countryTr(c.name)}
                     value={c.value}
                     max={countries[0]?.value ?? 0}
                     total={artist.gross}

@@ -73,3 +73,24 @@ export function flagOf(territory: string): string {
   const A = 0x1f1e6;
   return String.fromCodePoint(A + (iso.charCodeAt(0) - 65), A + (iso.charCodeAt(1) - 65));
 }
+
+let trNames: Intl.DisplayNames | null = null;
+try {
+  trNames = new Intl.DisplayNames(["tr"], { type: "region" });
+} catch {
+  trNames = null;
+}
+
+/**
+ * Rapordaki İngilizce ülke adını Türkçeye çevirir ("Turkey" → "Türkiye",
+ * "United States" → "Amerika Birleşik Devletleri"). Tanınmayan ad aynen döner.
+ */
+export function countryTr(territory: string): string {
+  const iso = isoFor(territory);
+  if (!iso || !trNames) return territory;
+  try {
+    return trNames.of(iso) ?? territory;
+  } catch {
+    return territory;
+  }
+}

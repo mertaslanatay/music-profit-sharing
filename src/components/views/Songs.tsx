@@ -1,5 +1,6 @@
 "use client";
 
+import { countryTr } from "@/lib/flags";
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { Result } from "@/lib/types";
@@ -211,10 +212,8 @@ export function Songs({
             )}
           </>
         ) : (
-          <p className="text-[12px] text-ink-400">
-            Bir şarkının kalıcı bölüşümünü düzenlemek için satıra tıkla. Şarkı bazlı gelir hakkı
-            devri için üstten bir <b>ödeme partisi</b> de seçebilirsin — dönem seçicisi bunun
-            için yeterli değil.
+          <p className="text-[12.5px] text-ink-500">
+            Bölüşümü düzenlemek için şarkı adına tıkla.
           </p>
         )}
       </div>
@@ -256,7 +255,14 @@ export function Songs({
                     <Td className="text-ink-300 tabular text-[12px]">{i + 1}</Td>
                     <Td>
                       <p className="font-medium text-ink-900 truncate max-w-[220px] flex items-center gap-1.5">
-                        {s.song}
+                        {s.id ? (
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); setSplitOpen({ id: s.id as string, title: s.song }); }}
+                            aria-label={`${s.song} — bölüşümü düzenle`}
+                            className="text-left truncate hover:text-brand-700 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-card">
+                            {s.song}
+                          </button>
+                        ) : s.song}
                         {s.id && (
                           <Icon
                             name="percent"
@@ -272,7 +278,8 @@ export function Songs({
                               e.stopPropagation();
                               setOpen({ id: s.id as string, title: s.song });
                             }}
-                            className="shrink-0 text-ink-300 hover:text-brand-600 transition-colors"
+                            aria-label={`${s.song} — gelir hakkı devri`}
+                            className="shrink-0 p-1 -m-1 text-ink-300 hover:text-brand-600 transition-colors rounded outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                           >
                             <Icon name="split" size={12} />
                           </button>
@@ -312,7 +319,7 @@ export function Songs({
                       {num(s.quantity)}
                     </Td>
                     <Td className="text-[12px] text-ink-500 truncate max-w-[130px]">
-                      {country?.name ?? "—"}
+                      {country ? countryTr(country.name) : "—"}
                     </Td>
                   </tr>
                 );

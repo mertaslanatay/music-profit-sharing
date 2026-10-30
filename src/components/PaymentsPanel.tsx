@@ -16,7 +16,7 @@ const dateTr = (iso: string | null) =>
 export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
   const [rows, setRows] = useState(initial);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "open" | "unpaid" | "requested">("all");
+  const [filter, setFilter] = useState<"all" | "open" | "unpaid" | "requested" | "nobank">("all");
   const [openArtist, setOpenArtist] = useState<BalanceRow | null>(null);
   const [bankArtist, setBankArtist] = useState<BalanceRow | null>(null);
 
@@ -33,6 +33,7 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
       if (filter === "open") return r.balance > 0.005;
       if (filter === "unpaid") return r.unpaidPeriods >= 2;
       if (filter === "requested") return r.hasOpenRequest;
+      if (filter === "nobank") return r.balance > 0.005 && !r.bank?.iban;
       return true;
     });
   }, [rows, q, filter]);
@@ -68,13 +69,17 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
             Bakiyesi olan <b>{num(totals.noBank)}</b> sanatçının IBAN bilgisi eksik. Ödeme yapmadan
             önce banka bilgilerini girmen gerekiyor.
           </p>
+          <button type="button" onClick={() => setFilter("nobank")}
+            className="ml-auto shrink-0 min-h-[32px] px-3 rounded-full text-[12px] font-semibold bg-amber-100 text-amber-900 hover:brightness-95 transition">
+            Eksikleri göster
+          </button>
         </div>
       )}
 
       <Card pad={false}>
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
           <div>
-            <h3 className="text-[15px] font-semibold text-ink-900">Sanatçı Bakiyeleri</h3>
+            <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900">Sanatçı Bakiyeleri</h3>
             <p className="text-[12.5px] text-ink-500 mt-0.5">
               {num(list.length)} sanatçı · bekleyen toplam{" "}
               <b className="text-ink-700">{money(list.reduce((a, r) => a + r.balance, 0))}</b>
@@ -85,19 +90,20 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Sanatçı ara…"
-              className="rounded-xl border border-line px-3 py-1.5 text-[12.5px] outline-none focus:border-brand-500 w-40"
+              className="h-9 rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 w-44"
             />
             {([
               ["all", "Tümü"],
               ["open", "Bakiyesi olan"],
               ["unpaid", "2+ dönem birikmiş"],
               ["requested", "İstek gönderen"],
+              ["nobank", "IBAN eksik"],
             ] as const).map(([k, label]) => (
               <button
                 key={k}
                 onClick={() => setFilter(k)}
                 className={clsx(
-                  "px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors",
+                  "min-h-[34px] px-3.5 rounded-full text-[12.5px] font-medium transition-colors",
                   filter === k ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
                 )}
               >
@@ -145,15 +151,12 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
                     <Td align="right" className="text-brand-600">{r.paid ? money(r.paid) : "—"}</Td>
                     <Td align="right" className="font-semibold text-ink-900">{money(r.balance)}</Td>
                     <Td>
-                      <Bar value={r.balance} max={maxBalance}
-                        color={r.balance <= 0.005 ? "#3D5CFF" : r.unpaidPeriods >= 3 ? "#FF6B57" : "#FFC234"} />
+                      <Bar value={r.balance} max={maxBalance} color="rgb(var(--c-brand-500))" />
                     </Td>
                     <Td align="center">
                       {r.unpaidPeriods > 0 ? (
-                        <span className={clsx(
-                          "text-[11px] font-semibold px-2 py-0.5 rounded-full",
-                          r.unpaidPeriods >= 3 ? "bg-rose-50 text-accent-rose" : "bg-accent-amber/15 text-accent-amber"
-                        )} title={r.oldestUnpaidLabel ? `En eski: ${r.oldestUnpaidLabel}` : undefined}>
+                        <span className="text-[12px] font-medium tabular text-ink-600"
+                          title={r.oldestUnpaidLabel ? `En eski: ${r.oldestUnpaidLabel}` : undefined}>
                           {r.unpaidPeriods} dönem
                         </span>
                       ) : (
@@ -168,17 +171,21 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
                           <span className="text-ink-300">· {r.bank.currency}</span>
                         </span>
                       ) : (
-                        <span className="text-[11.5px] text-accent-amber">eksik</span>
+                        <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full bg-accent-warn/15 text-accent-warn text-[11.5px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />IBAN eksik
+                        </span>
                       )}
                     </Td>
                     <Td align="right">
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => setBankArtist(r)}
-                          className="text-[11.5px] text-ink-500 hover:text-ink-900 transition-colors">
+                        <button type="button" onClick={() => setBankArtist(r)}
+                          aria-label={`${r.artistName} — banka bilgileri`}
+                          className="min-h-[34px] px-3 rounded-full border border-line text-[12px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
                           Banka
                         </button>
-                        <button onClick={() => setOpenArtist(r)}
-                          className="text-[11.5px] font-medium text-brand-600 hover:text-brand-700">
+                        <button type="button" onClick={() => setOpenArtist(r)}
+                          aria-label={`${r.artistName} — cari hesap ve ödeme kaydı`}
+                          className="min-h-[34px] px-3 rounded-full bg-brand-500/15 text-brand-700 text-[12px] font-semibold hover:bg-brand-500 hover:text-white transition-colors">
                           Cari hesap
                         </button>
                       </div>
@@ -853,16 +860,17 @@ export function BankRequestsPanel() {
 function Stat({
   label, value, sub, tone = "neutral",
 }: { label: string; value: string; sub?: string; tone?: "neutral" | "brand" | "amber" | "rose" | "muted" }) {
-  const color = {
-    neutral: "text-ink-900", brand: "text-brand-600", amber: "text-accent-amber",
-    rose: "text-accent-rose", muted: "text-ink-300",
+  // Ledger: rakam her zaman mürekkep renginde; ton yalnızca küçük bir nokta.
+  const dot = {
+    neutral: "bg-ink-900/30", brand: "bg-brand-500", amber: "bg-accent-sun",
+    rose: "bg-accent-warn", muted: "bg-ink-900/15",
   }[tone];
   return (
-    <Card>
-      <p className="text-[12.5px] font-medium text-ink-500">{label}</p>
-      <p className={clsx("text-[24px] font-semibold tabular mt-1.5 leading-none", color)}>{value}</p>
-      {sub && <p className="text-[11.5px] text-ink-400 mt-2">{sub}</p>}
-    </Card>
+    <div className="rounded-[20px] bg-card border border-line p-5 flex flex-col gap-3 min-w-0">
+      <p className="eyebrow flex items-center gap-2"><span className={clsx("w-2 h-2 rounded-full", dot)} />{label}</p>
+      <p className={clsx("font-display text-[clamp(22px,2.1vw,28px)] font-bold tracking-[-0.035em] tabular leading-none", tone === "muted" ? "text-ink-400" : "text-ink-900")}>{value}</p>
+      {sub && <p className="text-[13px] text-ink-500 -mt-0.5">{sub}</p>}
+    </div>
   );
 }
 

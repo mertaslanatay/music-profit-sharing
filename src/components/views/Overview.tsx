@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { Result } from "@/lib/types";
 import { compact, money, moneySmart, num, pct, periodSort, topN } from "@/lib/format";
 import { parsePeriod, periodShort } from "@/lib/period";
-import { flagOf } from "@/lib/flags";
+import { countryTr, flagOf } from "@/lib/flags";
 import { isDomestic, regionOf } from "@/lib/regions";
 import { Avatar, Card, CardHead, Icon, RankRow } from "../ui";
 
@@ -98,7 +98,7 @@ export function Overview({
       <section data-aos="fade-up" className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-1">
         <div className="min-w-0">
           <p className="eyebrow">Dağıtılacak net hakediş</p>
-          <p className="font-display font-bold tabular text-ink-900 leading-[0.95] tracking-[-0.045em] mt-3 text-[clamp(44px,5.6vw,84px)] break-all">
+          <p className="font-display font-bold tabular text-ink-900 leading-[0.95] tracking-[-0.045em] mt-3 text-[clamp(36px,5.6vw,84px)]">
             {netMain}
             <span className="text-ink-400 font-medium">{netCents}</span>
           </p>
@@ -184,7 +184,7 @@ export function Overview({
       {/* ------------------------------------------------ öne çıkanlar */}
       <section aria-label="Öne çıkanlar" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Insight delay={0} icon="globe" tone="sky" label="En güçlü pazar"
-          value={topCountry ? `${flagOf(topCountry.name)} ${topCountry.name}` : "—"}
+          value={topCountry ? `${flagOf(topCountry.name)} ${countryTr(topCountry.name)}` : "—"}
           sub={topCountry ? `Gelirin ${pct(topCountry.share)}'i · ${moneySmart(topCountry.value, precise)}` : undefined} />
         <Insight delay={50} icon="radio" tone="brand" label="En büyük mecra"
           value={topPlatform?.name ?? "—"}
@@ -263,7 +263,7 @@ export function Overview({
                 {countries.map((c, i) => (
                   <li key={c.name} className="grid grid-cols-[22px_1fr_auto] items-center gap-x-3 gap-y-1.5">
                     <span className="text-[16px] leading-none">{flagOf(c.name)}</span>
-                    <span className="text-[13.5px] font-medium text-ink-900 truncate">{c.name}</span>
+                    <span className="text-[13.5px] font-medium text-ink-900 truncate" title={c.name}>{countryTr(c.name)}</span>
                     <span className="text-[13.5px] font-bold text-ink-900 tabular">{moneySmart(c.value, precise)}</span>
                     <span className="col-start-2 h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
                       <span className="block h-full rounded-full grow-x" style={{ width: `${countries[0]?.value ? Math.max(2, (c.value / countries[0].value) * 100) : 0}%`, background: "rgb(var(--c-sky))", animationDelay: `${0.2 + i * 0.07}s` }} />
@@ -371,10 +371,12 @@ export function Overview({
                     <tr key={a.key} onClick={() => onArtist(a.key)}
                       className="cursor-pointer hover:bg-ink-900/[0.04] transition-colors">
                       <td className="px-3 py-3 border-b border-line">
-                        <span className="flex items-center gap-2.5 font-semibold text-ink-900">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); onArtist(a.key); }}
+                          aria-label={`${a.name} — hakediş ayrıntısını aç`}
+                          className="flex items-center gap-2.5 font-semibold text-ink-900 text-left max-w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-card">
                           <Avatar name={a.name} size={28} />
                           <span className="truncate">{a.name}</span>
-                        </span>
+                        </button>
                       </td>
                       <td className="px-3 py-3 border-b border-line text-right tabular text-ink-500">{moneySmart(a.gross, precise)}</td>
                       <td className="px-3 py-3 border-b border-line text-right tabular font-bold text-ink-900">{moneySmart(a.net, precise)}</td>

@@ -139,7 +139,7 @@ export function Pill({
       onClick={onClick}
       title={title}
       className={clsx(
-        "px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors whitespace-nowrap",
+        "min-h-[34px] px-3.5 rounded-full text-[12.5px] font-medium transition-colors whitespace-nowrap",
         active
           ? "bg-brand-500 text-white"
           : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
@@ -682,3 +682,41 @@ export function PrefToggle({
 }
 
 export { money, moneySmart, num, pct };
+
+/**
+ * ⓘ ipucu — uzun yardım metinlerinin yerini alır. Üzerine gelince, odaklanınca
+ * ya da dokununca açılır; ekran okuyucu için metin her zaman erişilebilir.
+ */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-describedby={id}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="w-8 h-8 rounded-full grid place-items-center text-ink-400 hover:text-ink-900 hover:bg-ink-900/[0.06] outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 8h.01" />
+        </svg>
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className={clsx(
+          "absolute z-30 left-1/2 top-full mt-2 -translate-x-1/2 w-[260px] rounded-xl bg-ink-900 text-canvas px-3.5 py-3 text-[12.5px] leading-relaxed shadow-pop transition-opacity",
+          open ? "opacity-100" : "opacity-0 pointer-events-none sr-only"
+        )}
+      >
+        {children}
+      </span>
+    </span>
+  );
+}

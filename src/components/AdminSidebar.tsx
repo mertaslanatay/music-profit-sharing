@@ -45,9 +45,6 @@ export function AdminSidebar({
       </div>
 
       <nav className="flex-1 px-3 overflow-y-auto scroll-thin">
-        <p className="eyebrow px-3 pt-4 pb-2">
-          Yönetim
-        </p>
         {tabs.map((t) => {
           const isActive = active === t.key;
           return (

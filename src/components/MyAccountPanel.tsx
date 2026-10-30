@@ -7,6 +7,7 @@ import { money, amountIn } from "@/lib/format";
 import { Button, Card, Empty, Icon, Stat, PrefToggle } from "./ui";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
+import { MenuButton, NavShell } from "./MobileNav";
 import { AccountSidebar, type AccountTabDef } from "./AccountSidebar";
 
 const dateTr = (iso: string | null) =>
@@ -47,6 +48,7 @@ export function MyAccountPanel({
   openBankRequest: BankChangeRequestRow | null;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [navOpen, setNavOpen] = useState(false);
   const [summary, setSummary] = useState(initialSummary);
   const [bank, setBank] = useState(initialBank);
   const [openBankRequest, setOpenBankRequest] = useState(initialOpenBankRequest);
@@ -86,21 +88,26 @@ export function MyAccountPanel({
 
   return (
     <main className="flex h-screen overflow-hidden">
+      <NavShell open={navOpen} onClose={() => setNavOpen(false)}>
       <AccountSidebar
         tabs={tabs}
         active={tab}
-        onTab={(k) => setTab(k as Tab)}
+        onTab={(k) => { setNavOpen(false); setTab(k as Tab); }}
         artistName={artistName}
         fullName={fullName}
       />
+      </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-line px-6 py-3.5 shrink-0 no-print">
-          <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
-          <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+        <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3">
+          <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
+          <div className="min-w-0">
+            <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
+            <p className="text-[12.5px] text-ink-400 leading-tight mt-0.5 hidden sm:block truncate">{meta.sub}</p>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto scroll-thin p-6">
+        <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 py-5 sm:py-6">
           <div className="max-w-3xl space-y-4">
             {tab === "overview" && (
               <OverviewTab

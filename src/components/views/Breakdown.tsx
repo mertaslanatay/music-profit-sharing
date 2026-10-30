@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { Result } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
 import { money, moneySmart, num, pct } from "@/lib/format";
-import { flagOf } from "@/lib/flags";
+import { countryTr, flagOf } from "@/lib/flags";
 import { Bar, Card, CardHead, Empty, Stat } from "../ui";
 import { CHART_COLORS, Donut, HBar } from "../charts";
 
@@ -40,15 +40,15 @@ export function Breakdown({
   const all = useMemo(() => {
     const q = foldKey(query);
     return Object.entries(source)
-      .map(([name, value]) => ({ name, value, share: total ? value / total : 0 }))
-      .filter((d) => (q ? foldKey(d.name).includes(q) : true))
+      .map(([raw, value]) => ({ raw, name: isGeo ? countryTr(raw) : raw, value, share: total ? value / total : 0 }))
+      .filter((d) => (q ? foldKey(d.name).includes(q) || foldKey(d.raw).includes(q) : true))
       .sort((a, b) => b.value - a.value);
-  }, [source, total, query]);
+  }, [source, total, query, isGeo]);
 
   const top = all.slice(0, 12);
   const rest = all.slice(12);
   const restSum = rest.reduce((a, d) => a + d.value, 0);
-  const donutData = restSum > 0 ? [...all.slice(0, 7), { name: "Diğer", value: restSum, share: total ? restSum / total : 0 }] : all.slice(0, 8);
+  const donutData = restSum > 0 ? [...all.slice(0, 7), { raw: "Diğer", name: "Diğer", value: restSum, share: total ? restSum / total : 0 }] : all.slice(0, 8);
 
   const title = isGeo ? "Coğrafya" : "Platformlar";
   const unitLabel = isGeo ? "ülke" : "platform";
@@ -94,7 +94,7 @@ export function Breakdown({
             <select
               value={artistKey}
               onChange={(e) => setArtistKey(e.target.value)}
-              className="rounded-xl border border-line px-3 py-1.5 text-[12.5px] bg-card outline-none focus:border-brand-500 transition-colors max-w-[220px]"
+              className="h-10 rounded-xl border border-line px-3 text-[13px] bg-card text-ink-900 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition-colors max-w-[240px]"
             >
               <option value="">Tüm sanatçılar</option>
               {res.artists.slice(0, 120).map((a) => (
@@ -178,7 +178,7 @@ export function Breakdown({
                   <td className="px-3 py-2 text-[12px] text-ink-300 tabular">{i + 1}</td>
                   <td className="px-3 py-2 text-[13px] text-ink-900">
                     <span className="flex items-center gap-2">
-                      {isGeo && <span className="text-[14px] leading-none">{flagOf(d.name)}</span>}
+                      {isGeo && <span className="text-[14px] leading-none">{flagOf(d.raw)}</span>}
                       {d.name}
                     </span>
                   </td>

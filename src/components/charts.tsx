@@ -79,7 +79,7 @@ export function HBar({
         <defs>
           <linearGradient id={`hb-${color.slice(1)}`} x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor={color} stopOpacity={0.95} />
-            <stop offset="100%" stopColor={color} stopOpacity={0.55} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.8} />
           </linearGradient>
         </defs>
         <XAxis type="number" hide />
@@ -96,8 +96,11 @@ export function HBar({
         <Bar
           dataKey="value"
           fill={`url(#hb-${color.slice(1)})`}
-          radius={[0, 6, 6, 0]}
-          maxBarSize={22}
+          radius={[0, 999, 999, 0]}
+          maxBarSize={16}
+          background={{ fill: "var(--chart-cursor)", radius: 999 } as never}
+          animationDuration={1200}
+          animationEasing="ease-out"
           onClick={(d: unknown) => {
             const row = d as { name?: string };
             if (onClick && row?.name) onClick(row.name);
@@ -274,7 +277,7 @@ export function AreaTrend({
           axisLine={false}
           tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
           tickFormatter={(v: number) => compact(v)}
-          width={58}
+          width={66}
         />
         <Tooltip
           content={<TipBox precise={precise} />}

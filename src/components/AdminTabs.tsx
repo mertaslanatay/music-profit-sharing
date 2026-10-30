@@ -5,6 +5,7 @@ import type { ReportRow } from "@/lib/queries";
 import type { BalanceRow } from "@/lib/payments";
 import type { UserListRow } from "@/app/api/admin/users/route";
 import { AdminPanel } from "./AdminPanel";
+import { MenuButton, NavShell } from "./MobileNav";
 import { PaymentsPanel, BankRequestsPanel } from "./PaymentsPanel";
 import { UsersPanel } from "./UsersPanel";
 import { AuditPanel } from "./AuditPanel";
@@ -57,6 +58,7 @@ export function AdminTabs({
   mfa?: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null;
 }) {
   const [tab, setTab] = useState<Tab>("reports");
+  const [navOpen, setNavOpen] = useState(false);
   const [pendingBankRequests, setPendingBankRequests] = useState(0);
   const [unreadThreads, setUnreadThreads] = useState(0);
   const openRequests = balances.filter((b) => b.hasOpenRequest).length;
@@ -92,34 +94,37 @@ export function AdminTabs({
     { key: "payments", label: "Ödemeler", icon: "wallet", badge: openRequests },
     { key: "bank-requests", label: "Banka Talepleri", icon: "bank", badge: pendingBankRequests },
     { key: "users", label: "Kullanıcılar", icon: "users", badge: pendingUsers },
-    { key: "messages", label: "Mesajlar", icon: "copy", badge: unreadThreads },
+    { key: "messages", label: "Mesajlar", icon: "message", badge: unreadThreads },
     { key: "mail", label: "E-posta", icon: "mail" },
     { key: "separators", label: "Ayrıştırma", icon: "split" },
     { key: "announcements", label: "Duyurular", icon: "bell" },
     { key: "audit", label: "Denetim", icon: "clock" },
     // Yöneticinin KENDİ bilgileri — listenin sonunda, diğer yönetim
     // işlerinden ayrı dursun diye.
-    { key: "profile", label: "Profilim", icon: "sliders" },
+    { key: "profile", label: "Profilim", icon: "user" },
   ];
 
   const meta = TITLES[tab];
 
   return (
     <main className="flex h-screen overflow-hidden">
-      <AdminSidebar tabs={tabs} active={tab} onTab={(k) => setTab(k as Tab)} viewer={viewer} />
+      <NavShell open={navOpen} onClose={() => setNavOpen(false)}>
+        <AdminSidebar tabs={tabs} active={tab} onTab={(k) => { setNavOpen(false); setTab(k as Tab); }} viewer={viewer} />
+      </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-line px-6 py-3.5 shrink-0 no-print flex items-center gap-4">
+        <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3 sm:gap-4">
+          <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
           <div className="min-w-0">
-            <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
-            <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+            <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
+            <p className="text-[12.5px] text-ink-400 leading-tight mt-0.5 hidden sm:block truncate">{meta.sub}</p>
           </div>
           {/* Zil artık kenar çubuğunda değil, sağ üstte — ana paneldeki
               yerleşimle aynı olsun diye. */}
           {viewer && <div className="ml-auto shrink-0"><NotificationBell compact /></div>}
         </header>
 
-        <div className="flex-1 overflow-y-auto scroll-thin p-6">
+        <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 py-5 sm:py-6">
           {tab === "reports" && <AdminPanel initialReports={reports} />}
           {tab === "payments" && <PaymentsPanel initial={balances} />}
           {tab === "bank-requests" && <BankRequestsPanel />}

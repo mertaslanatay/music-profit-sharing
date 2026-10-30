@@ -45,8 +45,10 @@ export function pct(v: number, digits = 1): string {
 
 /** Grafik ekseni için kısa biçim: $1,2K */
 export function compact(v: number): string {
+  // Türkçe kısaltmalar: B = bin, Mn = milyon.
   const a = Math.abs(v);
-  if (a >= 1000) return `$${nf(1, 1).format(v / 1000)}K`;
+  if (a >= 1_000_000) return `$${nf(0, 1).format(v / 1_000_000)} Mn`;
+  if (a >= 1000) return `$${nf(0, 1).format(v / 1000)} B`;
   if (a >= 1) return `$${nf(0, 0).format(v)}`;
   return `$${nf(2, 2).format(v)}`;
 }
