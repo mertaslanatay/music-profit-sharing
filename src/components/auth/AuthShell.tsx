@@ -39,7 +39,7 @@ export function AuthShell({
 
         <div
           data-aos="fade-up"
-          data-aos-delay="80"
+          data-aos-delay="100"
           className="w-full max-w-[460px] rounded-[26px] bg-card border border-line p-6 sm:p-10"
           style={{ boxShadow: "var(--shadow-float)" }}
         >

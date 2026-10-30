@@ -217,7 +217,7 @@ export function Donut({
       </ResponsiveContainer>
       {centerValue && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-[22px] font-display font-bold tracking-tight text-ink-900 tabular leading-none">
+          <span className="text-[18px] font-display font-bold tracking-tight text-ink-900 tabular leading-none">
             {centerValue}
           </span>
           {centerLabel && (

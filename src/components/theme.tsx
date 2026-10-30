@@ -3,7 +3,6 @@
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import AOS from "aos";
 import "aos/dist/aos.css";
 
 export type Theme = "dark" | "light";
@@ -76,22 +75,59 @@ export function ThemeToggle({ className }: { className?: string }) {
 
 /**
  * AOS (Animate On Scroll) — tasarım sistemindeki değerlerle.
- * mutationObserver sayesinde sonradan gelen kartlar da yakalanır; her
- * sayfa geçişinde yeniden taranır. "Hareketi azalt" açıkken tamamen kapalı.
+ *
+ * AOS'un kendi tetikleyicisi yalnızca PENCERE kaydırmasını dinliyor; oysa
+ * panel kendi iç kaydırma alanında (overflow-y-auto) kayıyor. Sonuç: ekranın
+ * altındaki kartlar hiç "görünür" sayılmıyor ve sayfa boş kalıyordu. Bu
+ * yüzden AOS'un CSS'i ve data-aos öznitelikleri aynen kullanılıyor, ama
+ * görünürlüğü IntersectionObserver ölçüyor — hangi kapsayıcı kayarsa kaysın
+ * ekrana giren eleman canlanıyor. Sonradan eklenen kartlar MutationObserver
+ * ile yakalanıyor. "Hareketi azalt" açıksa her şey anında görünür.
  */
 export function AosInit() {
   const pathname = usePathname();
   useEffect(() => {
-    AOS.init({
-      duration: 900,
-      easing: "ease-out-cubic",
-      once: true,
-      offset: 40,
-      disable: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    });
-  }, []);
-  useEffect(() => {
-    AOS.refreshHard();
+    const body = document.body;
+    body.setAttribute("data-aos-duration", "900");
+    body.setAttribute("data-aos-easing", "ease-out-cubic");
+    body.setAttribute("data-aos-once", "true");
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const show = (el: Element) => el.classList.add("aos-init", "aos-animate");
+    if (reduce || typeof IntersectionObserver === "undefined") {
+      const all = () => document.querySelectorAll("[data-aos]").forEach(show);
+      all();
+      const mo = new MutationObserver(all);
+      mo.observe(body, { childList: true, subtree: true });
+      return () => mo.disconnect();
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            show(e.target);
+            io.unobserve(e.target);
+          }
+        }
+      },
+      { rootMargin: "0px 0px -40px 0px", threshold: 0.01 }
+    );
+    const seen = new WeakSet<Element>();
+    const scan = () =>
+      document.querySelectorAll("[data-aos]:not(.aos-animate)").forEach((el) => {
+        if (seen.has(el)) return;
+        seen.add(el);
+        el.classList.add("aos-init");
+        io.observe(el);
+      });
+    scan();
+    const mo = new MutationObserver(scan);
+    mo.observe(body, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
   }, [pathname]);
   return null;
 }

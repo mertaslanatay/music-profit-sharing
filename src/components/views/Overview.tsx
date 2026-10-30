@@ -5,7 +5,10 @@ import type { Result } from "@/lib/types";
 import { compact, money, moneySmart, num, pct, periodSort, topN } from "@/lib/format";
 import { parsePeriod, periodShort } from "@/lib/period";
 import { flagOf } from "@/lib/flags";
+import { isDomestic, regionOf } from "@/lib/regions";
 import { Avatar, Card, CardHead, Icon, RankRow } from "../ui";
+
+const shortLabel = (s: string) => (s.length > 16 ? s.slice(0, 15) + "…" : s);
 import { AreaTrend, CHART_COLORS, Donut, HBar } from "../charts";
 
 /**
@@ -38,7 +41,42 @@ export function Overview({
   ].map((d) => ({ ...d, share: t.gross ? d.value / t.gross : 0 }));
   const DONUT_COLORS = [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[2], CHART_COLORS[3], "rgb(var(--c-line-strong))"];
 
-  const countryData = topN(res.territories, 6);
+  // --- coğrafya
+  const terrTotal = Object.values(res.territories).reduce((a, v) => a + v, 0) || 1;
+  const countries = topN(res.territories, 8).map((c) => ({ ...c, share: c.value / terrTotal }));
+  const domesticShare =
+    Object.entries(res.territories).reduce((a, [k, v]) => a + (isDomestic(k) ? v : 0), 0) / terrTotal;
+  const regionTally: Record<string, number> = {};
+  for (const [k, v] of Object.entries(res.territories)) {
+    const r = regionOf(k);
+    regionTally[r] = (regionTally[r] ?? 0) + v;
+  }
+  const regions = topN(regionTally, 7).map((r) => ({ ...r, share: r.value / terrTotal }));
+
+  // --- mecralar
+  const retTotal = Object.values(res.retailers).reduce((a, v) => a + v, 0) || 1;
+  const platforms = topN(res.retailers, 7).map((p) => ({ ...p, share: p.value / retTotal }));
+  const rpm = t.quantity > 0 ? money((t.gross / t.quantity) * 1000) : "—";
+
+  // --- gelir türleri (satış sınıflandırması)
+  const salesAll = topN(res.salesClasses, 50);
+  const salesTotal = salesAll.reduce((a, x) => a + x.value, 0) || 1;
+  const salesRest = salesAll.slice(4).reduce((a, x) => a + x.value, 0);
+  const salesData = [...salesAll.slice(0, 4), ...(salesRest > 0 ? [{ name: "Diğer", value: salesRest }] : [])]
+    .map((d) => ({ ...d, share: d.value / salesTotal }));
+
+  // --- dönem performansı (en yeni üstte)
+  const periodRows = periodData.length < 2 ? [] : periodData
+    .map((p, i) => ({ ...p, change: i > 0 && periodData[i - 1].value ? (p.value - periodData[i - 1].value) / periodData[i - 1].value : null }))
+    .slice(-8)
+    .reverse();
+  const periodMax = Math.max(1, ...periodRows.map((p) => p.value));
+  const lastChange = periodData.length >= 2 && periodData[periodData.length - 2].value
+    ? (periodData[periodData.length - 1].value - periodData[periodData.length - 2].value) / periodData[periodData.length - 2].value
+    : null;
+  const topSong = res.songs[0];
+  const topCountry = countries[0];
+  const topPlatform = platforms[0];
   const labelData = res.labels.map((l) => ({ name: l.label, value: l.gross, share: t.gross ? l.gross / t.gross : 0 }));
   const topArtists = res.artists.slice(0, 5);
   const topSongs = res.songs.slice(0, 6);
@@ -74,6 +112,11 @@ export function Overview({
                 kesintisiz
               </span>
             )}
+            {lastChange !== null && (
+              <span className={`inline-flex items-center gap-1 h-[26px] px-2.5 rounded-full font-semibold text-[12.5px] ${lastChange >= 0 ? "bg-brand-500/15 text-brand-700" : "bg-accent-warn/15 text-accent-warn"}`}>
+                {lastChange >= 0 ? "↑" : "↓"} {pct(Math.abs(lastChange))} son dönem
+              </span>
+            )}
             <span>
               Bankaya yatan tutar üzerinden oransal dağıtıldı · {num(t.artistCount)} sanatçı · {num(t.songCount)} şarkı
             </span>
@@ -98,7 +141,7 @@ export function Overview({
             </svg>
           ) : undefined}
         />
-        <Kpi delay={60} dot="bg-accent-orange" label="SWIFT kesintisi"
+        <Kpi delay={50} dot="bg-accent-orange" label="SWIFT kesintisi"
           value={t.deduction ? money(t.deduction) : "—"}
           sub={t.deduction ? `${pct(t.deductionRate, 2)} · kazanca göre paylaştırıldı` : "Bu kapsamda kesinti yok"}
           below={
@@ -108,7 +151,7 @@ export function Overview({
             </div>
           }
         />
-        <Kpi delay={120} dot="bg-accent-sky" label="Hak sahibi" value={num(t.artistCount)}
+        <Kpi delay={100} dot="bg-accent-sky" label="Hak sahibi" value={num(t.artistCount)}
           sub={`${res.combos.length} ortak yapım · ${num(t.labelCount)} label`}
           visual={
             <span className="flex">
@@ -125,7 +168,7 @@ export function Overview({
             </span>
           }
         />
-        <Kpi delay={180} dot="bg-accent-sun" label="Toplam dinlenme" value={num(t.quantity)}
+        <Kpi delay={150} dot="bg-accent-sun" label="Toplam dinlenme" value={num(t.quantity)}
           sub={`${num(t.retailerCount)} platform · ${num(t.territoryCount)} ülke`}
           below={
             <div className="flex gap-[3px] h-1.5">
@@ -136,6 +179,22 @@ export function Overview({
             </div>
           }
         />
+      </section>
+
+      {/* ------------------------------------------------ öne çıkanlar */}
+      <section aria-label="Öne çıkanlar" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Insight delay={0} icon="globe" tone="sky" label="En güçlü pazar"
+          value={topCountry ? `${flagOf(topCountry.name)} ${topCountry.name}` : "—"}
+          sub={topCountry ? `Gelirin ${pct(topCountry.share)}'i · ${moneySmart(topCountry.value, precise)}` : undefined} />
+        <Insight delay={50} icon="radio" tone="brand" label="En büyük mecra"
+          value={topPlatform?.name ?? "—"}
+          sub={topPlatform ? `Gelirin ${pct(topPlatform.share)}'i · ${moneySmart(topPlatform.value, precise)}` : undefined} />
+        <Insight delay={100} icon="music" tone="orange" label="Zirvedeki şarkı"
+          value={topSong?.song ?? "—"}
+          sub={topSong ? `${moneySmart(topSong.gross, precise)} brüt` : undefined} />
+        <Insight delay={150} icon="chart" tone="sun" label="1K dinlenme başına"
+          value={rpm}
+          sub="Ortalama brüt gelir" />
       </section>
 
       {/* ------------------------------------------------ seyir + en çok kazananlar */}
@@ -190,33 +249,114 @@ export function Overview({
         </div>
       </div>
 
-      {/* ------------------------------------------------ platformlar + ödeme listesi */}
+      {/* ------------------------------------------------ coğrafya + gelir türleri */}
       <div className="flex flex-wrap gap-5">
-        <div data-aos="fade-up" className="flex-[1_1_320px] min-w-0">
+        <div data-aos="fade-up" className="flex-[2_1_560px] min-w-0">
           <Card className="h-full">
-            <CardHead title="Platformlar" sub="Brüt gelirdeki pay" />
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="w-[180px] shrink-0">
-                <Donut data={platformData} colors={DONUT_COLORS} height={180}
-                  centerValue={platformData[0] ? pct(platformData[0].share, 0) : "—"}
-                  centerLabel={platformData[0]?.name ?? ""} precise={precise} />
-              </div>
-              <ul className="flex-1 min-w-[150px] space-y-3">
-                {platformData.map((p, i) => (
-                  <li key={p.name} className="flex items-center gap-2.5 text-[14px]">
-                    <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: DONUT_COLORS[i] }} />
-                    <span className="flex-1 truncate text-ink-700">{p.name}</span>
-                    <span className="font-bold tabular text-ink-900">{pct(p.share, 0)}</span>
+            <CardHead
+              title="Coğrafya"
+              sub="Gelirin geldiği pazarlar ve bölgeler"
+              right={<span className="text-[12px] font-semibold text-ink-600 bg-ink-900/[0.06] px-2.5 py-1 rounded-full tabular">{num(t.territoryCount)} ülke</span>}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-[1.25fr_1fr] gap-x-8 gap-y-6">
+              <ol className="space-y-3.5">
+                {countries.map((c, i) => (
+                  <li key={c.name} className="grid grid-cols-[22px_1fr_auto] items-center gap-x-3 gap-y-1.5">
+                    <span className="text-[16px] leading-none">{flagOf(c.name)}</span>
+                    <span className="text-[13.5px] font-medium text-ink-900 truncate">{c.name}</span>
+                    <span className="text-[13.5px] font-bold text-ink-900 tabular">{moneySmart(c.value, precise)}</span>
+                    <span className="col-start-2 h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
+                      <span className="block h-full rounded-full grow-x" style={{ width: `${countries[0]?.value ? Math.max(2, (c.value / countries[0].value) * 100) : 0}%`, background: "rgb(var(--c-sky))", animationDelay: `${0.2 + i * 0.07}s` }} />
+                    </span>
+                    <span className="text-[11.5px] text-ink-400 tabular text-right">{pct(c.share)}</span>
                   </li>
                 ))}
-              </ul>
+              </ol>
+              <div className="space-y-5">
+                <div>
+                  <p className="eyebrow mb-2.5">Yurt içi · yurt dışı</p>
+                  <div className="flex gap-[3px] h-3">
+                    <span className="h-full rounded-full grow-x bg-brand-500" style={{ flex: `${Math.max(domesticShare, 0.005)} 1 0` }} />
+                    <span className="h-full rounded-full grow-x bg-accent-orange" style={{ flex: `${Math.max(1 - domesticShare, 0.005)} 1 0`, animationDelay: ".15s" }} />
+                  </div>
+                  <div className="mt-2.5 flex justify-between text-[13px]">
+                    <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-[3px] bg-brand-500" />Türkiye <b className="tabular text-ink-900">{pct(domesticShare)}</b></span>
+                    <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-[3px] bg-accent-orange" />Yurt dışı <b className="tabular text-ink-900">{pct(1 - domesticShare)}</b></span>
+                  </div>
+                </div>
+                <div>
+                  <p className="eyebrow mb-2.5">Bölgeler</p>
+                  <ul className="space-y-2.5">
+                    {regions.map((r, i) => (
+                      <li key={r.name} className="flex items-center gap-3 text-[13px]">
+                        <span className="w-[118px] shrink-0 truncate text-ink-700">{r.name}</span>
+                        <span className="flex-1 h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
+                          <span className="block h-full rounded-full grow-x" style={{ width: `${Math.max(1.5, r.share * 100)}%`, background: CHART_COLORS[i % CHART_COLORS.length], animationDelay: `${0.25 + i * 0.07}s` }} />
+                        </span>
+                        <span className="w-12 text-right font-semibold tabular text-ink-900">{pct(r.share)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div data-aos="fade-up" data-aos-delay="100" className="flex-[1_1_300px] min-w-0">
+          <Card className="h-full">
+            <CardHead title="Gelir türleri" sub="Satış sınıflandırmasına göre" />
+            <Donut data={salesData} colors={DONUT_COLORS} height={190}
+              centerValue={salesData[0] ? pct(salesData[0].share, 0) : "—"}
+              centerLabel={salesData[0] ? shortLabel(salesData[0].name) : ""} precise={precise} />
+            <ul className="mt-5 space-y-2.5">
+              {salesData.map((d, i) => (
+                <li key={d.name} className="flex items-center gap-2.5 text-[13px]">
+                  <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: DONUT_COLORS[i] }} />
+                  <span className="flex-1 truncate text-ink-700" title={d.name}>{d.name}</span>
+                  <span className="font-bold tabular text-ink-900">{pct(d.share)}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------ mecralar + ödeme listesi */}
+      <div className="flex flex-wrap gap-5">
+        <div data-aos="fade-up" className="flex-[1_1_340px] min-w-0">
+          <Card className="h-full">
+            <CardHead
+              title="Streaming mecraları"
+              sub="Platform bazında brüt gelir"
+              right={<span className="text-[12px] font-semibold text-ink-600 bg-ink-900/[0.06] px-2.5 py-1 rounded-full tabular">{num(t.retailerCount)} platform</span>}
+            />
+            <ol className="space-y-3.5">
+              {platforms.map((p, i) => (
+                <li key={p.name} className="grid grid-cols-[28px_1fr_auto] items-center gap-x-3 gap-y-1.5">
+                  <span className="w-7 h-7 rounded-lg grid place-items-center text-[11px] font-bold text-white"
+                    style={{ background: CHART_COLORS[i % CHART_COLORS.length], color: i === 3 || i === 6 ? "#0B0D12" : "#fff" }}>
+                    {p.name.slice(0, 1).toLocaleUpperCase("tr-TR")}
+                  </span>
+                  <span className="text-[13.5px] font-medium text-ink-900 truncate">{p.name}</span>
+                  <span className="text-[13.5px] font-bold text-ink-900 tabular">{moneySmart(p.value, precise)}</span>
+                  <span className="col-start-2 h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
+                    <span className="block h-full rounded-full grow-x" style={{ width: `${platforms[0]?.value ? Math.max(2, (p.value / platforms[0].value) * 100) : 0}%`, background: CHART_COLORS[i % CHART_COLORS.length], animationDelay: `${0.2 + i * 0.07}s` }} />
+                  </span>
+                  <span className="text-[11.5px] text-ink-400 tabular text-right">{pct(p.share)}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-5 pt-4 border-t border-line flex items-center justify-between gap-3">
+              <span className="text-[13px] text-ink-500">1.000 dinlenme başına ortalama</span>
+              <span className="font-display text-[18px] font-bold tabular text-ink-900">{rpm}</span>
             </div>
           </Card>
         </div>
 
         <div data-aos="fade-up" data-aos-delay="100" className="flex-[2_1_520px] min-w-0">
           <Card className="h-full">
-            <CardHead title="Ödeme listesi" sub={`İlk 6 sanatçı · net oran ${t.netRate.toLocaleString("tr-TR", { maximumFractionDigits: 5 })}`} />
+            <CardHead title="Ödeme listesi" sub={`İlk 9 sanatçı · net oran ${t.netRate.toLocaleString("tr-TR", { maximumFractionDigits: 5 })}`} />
             <div className="overflow-x-auto -mx-1">
               <table className="w-full min-w-[480px] border-collapse text-[14px]">
                 <thead>
@@ -227,7 +367,7 @@ export function Overview({
                   </tr>
                 </thead>
                 <tbody>
-                  {res.artists.slice(0, 6).map((a) => (
+                  {res.artists.slice(0, 9).map((a) => (
                     <tr key={a.key} onClick={() => onArtist(a.key)}
                       className="cursor-pointer hover:bg-ink-900/[0.04] transition-colors">
                       <td className="px-3 py-3 border-b border-line">
@@ -252,21 +392,32 @@ export function Overview({
         </div>
       </div>
 
-      {/* ------------------------------------------------ ayrıntılar */}
+      {/* ------------------------------------------------ dönem performansı + şarkılar + label */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div data-aos="fade-up">
           <Card className="h-full">
-            <CardHead title="Ülkeler" sub="Gelirin geldiği pazarlar" />
-            <div className="space-y-0.5">
-              {countryData.map((c) => (
-                <RankRow key={c.name} name={c.name} value={c.value} max={countryData[0]?.value ?? 0}
-                  total={t.gross} color={CHART_COLORS[2]} precise={precise}
-                  prefix={<span className="text-[15px] leading-none shrink-0">{flagOf(c.name)}</span>} />
-              ))}
-            </div>
+            <CardHead title="Dönem performansı" sub="Son dönemler · bir öncekine göre değişim" />
+            {periodRows.length === 0 ? (
+              <p className="text-[13px] text-ink-400">Karşılaştırma için en az iki dönem gerekir.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {periodRows.map((p) => (
+                  <li key={p.full} className="flex items-center gap-3 py-2.5">
+                    <span className="w-[72px] shrink-0 text-[13px] font-medium text-ink-700" title={p.full}>{p.name}</span>
+                    <span className="flex-1 h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
+                      <span className="block h-full rounded-full grow-x bg-brand-500" style={{ width: `${Math.max(2, (p.value / periodMax) * 100)}%` }} />
+                    </span>
+                    <span className="w-[92px] text-right text-[13px] font-bold tabular text-ink-900">{compact(p.value)}</span>
+                    <span className={`w-[64px] text-right text-[12px] font-semibold tabular ${p.change === null ? "text-ink-400" : p.change >= 0 ? "text-brand-700" : "text-accent-warn"}`}>
+                      {p.change === null ? "—" : `${p.change >= 0 ? "↑" : "↓"} ${pct(Math.abs(p.change))}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </div>
-        <div data-aos="fade-up" data-aos-delay="60">
+        <div data-aos="fade-up" data-aos-delay="50">
           <Card className="h-full">
             <CardHead title="Şarkılar" sub="Bölüşüm öncesi şarkı geliri" />
             <div className="space-y-0.5">
@@ -277,7 +428,7 @@ export function Overview({
             </div>
           </Card>
         </div>
-        <div data-aos="fade-up" data-aos-delay="120">
+        <div data-aos="fade-up" data-aos-delay="100">
           <Card className="h-full">
             <CardHead title="Label dağılımı" sub="Gelirin label bazında kırılımı" />
             <Donut data={labelData} height={170} centerValue={compact(t.gross)} centerLabel="toplam brüt" precise={precise} />
@@ -348,6 +499,42 @@ function Kpi({
       <p className="font-display text-[clamp(22px,2.1vw,28px)] font-bold tracking-[-0.035em] text-ink-900 tabular leading-none">{value}</p>
       {below}
       {sub && <p className="text-[13px] text-ink-500 -mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function Insight({
+  icon,
+  tone,
+  label,
+  value,
+  sub,
+  delay,
+}: {
+  icon: string;
+  tone: "brand" | "orange" | "sky" | "sun";
+  label: string;
+  value: string;
+  sub?: string;
+  delay: number;
+}) {
+  const chip = {
+    brand: "bg-brand-500/15 text-brand-700",
+    orange: "bg-accent-orange/15 text-accent-orange",
+    sky: "bg-accent-sky/15 text-accent-sky",
+    sun: "bg-accent-sun/20 text-amber-700",
+  }[tone];
+  return (
+    <div data-aos="fade-up" data-aos-delay={delay}
+      className="rounded-[20px] bg-card border border-line p-5 flex items-start gap-4 min-w-0">
+      <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${chip}`}>
+        <Icon name={icon} size={18} />
+      </span>
+      <div className="min-w-0">
+        <p className="eyebrow">{label}</p>
+        <p className="mt-1.5 font-display text-[18px] font-bold tracking-[-0.02em] text-ink-900 truncate" title={value}>{value}</p>
+        {sub && <p className="mt-1 text-[12.5px] text-ink-500 truncate">{sub}</p>}
+      </div>
     </div>
   );
 }
