@@ -366,7 +366,7 @@ function TransferForm({
     }
   };
 
-  const sel = "w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-white outline-none focus:border-brand-500 transition-colors";
+  const sel = "w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-card outline-none focus:border-brand-500 transition-colors";
 
   return (
     <div className="space-y-3">
@@ -409,7 +409,7 @@ function TransferForm({
               onClick={() => setYuzde(v)}
               className={clsx(
                 "px-2.5 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors",
-                yuzde === v ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
+                yuzde === v ? "bg-brand-500 text-white" : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
               )}
             >
               %{v}
@@ -419,7 +419,7 @@ function TransferForm({
             value={yuzde}
             onChange={(e) => setYuzde(e.target.value.replace(/[^\d.]/g, "").slice(0, 5))}
             inputMode="decimal"
-            className="w-20 rounded-lg border border-line px-2.5 py-1.5 text-[13px] bg-white outline-none focus:border-brand-500 text-right tabular"
+            className="w-20 rounded-lg border border-line px-2.5 py-1.5 text-[13px] bg-card outline-none focus:border-brand-500 text-right tabular"
           />
           <span className="text-[13px] text-ink-400">%</span>
         </div>

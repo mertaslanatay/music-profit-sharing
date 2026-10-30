@@ -59,7 +59,7 @@ export function ArtistPanel({
   return (
     <>
       <div
-        className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
+        className="fixed inset-0 bg-black/50 z-40 fade-in no-print"
         onClick={onClose}
         aria-hidden
       />
@@ -135,9 +135,9 @@ export function ArtistPanel({
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Mini label="Tek sahipli" value={moneySmart(artist.soloGross, precise)} color="#16A75C" />
-            <Mini label="Ana sanatçı" value={moneySmart(artist.primaryGross, precise)} color="#7C6BF5" />
-            <Mini label="Featuring" value={moneySmart(artist.featureGross, precise)} color="#F2A93B" />
+            <Mini label="Tek sahipli" value={moneySmart(artist.soloGross, precise)} color="#3D5CFF" />
+            <Mini label="Ana sanatçı" value={moneySmart(artist.primaryGross, precise)} color="#FF7A2F" />
+            <Mini label="Featuring" value={moneySmart(artist.featureGross, precise)} color="#FFC234" />
           </div>
 
           <Section title="Şarkı bazında hakediş" sub="Bölüşüm payı dahil">
@@ -191,7 +191,7 @@ export function ArtistPanel({
                     value={c.value}
                     max={countries[0]?.value ?? 0}
                     total={artist.gross}
-                    color="#3FA9E8"
+                    color="#22B8F5"
                     precise={precise}
                     prefix={<span className="text-[14px] leading-none shrink-0">{flagOf(c.name)}</span>}
                   />
@@ -208,7 +208,7 @@ export function ArtistPanel({
                     value={p.value}
                     max={platforms[0]?.value ?? 0}
                     total={artist.gross}
-                    color="#16A75C"
+                    color="#3D5CFF"
                     precise={precise}
                   />
                 ))}
@@ -227,7 +227,7 @@ export function ArtistPanel({
                       value={l.value}
                       max={labels[0]?.value ?? 0}
                       total={artist.gross}
-                      color="#F2A93B"
+                      color="#FFC234"
                       precise={precise}
                     />
                   ))}
@@ -245,7 +245,7 @@ export function ArtistPanel({
                       value={c.value}
                       max={collabs[0]?.value ?? 0}
                       total={artist.gross}
-                      color="#7C6BF5"
+                      color="#FF7A2F"
                       precise={precise}
                       prefix={<Avatar name={c.name} size={22} />}
                     />

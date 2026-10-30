@@ -98,7 +98,7 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
                 onClick={() => setFilter(k)}
                 className={clsx(
                   "px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors",
-                  filter === k ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+                  filter === k ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
                 )}
               >
                 {label}
@@ -146,7 +146,7 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
                     <Td align="right" className="font-semibold text-ink-900">{money(r.balance)}</Td>
                     <Td>
                       <Bar value={r.balance} max={maxBalance}
-                        color={r.balance <= 0.005 ? "#16A75C" : r.unpaidPeriods >= 3 ? "#E5556E" : "#F2A93B"} />
+                        color={r.balance <= 0.005 ? "#3D5CFF" : r.unpaidPeriods >= 3 ? "#FF6B57" : "#FFC234"} />
                     </Td>
                     <Td align="center">
                       {r.unpaidPeriods > 0 ? (
@@ -343,7 +343,7 @@ function LedgerDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 bg-ink-900/25 z-40 fade-in" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50 z-40 fade-in" onClick={onClose} />
       <div className="fixed right-0 top-0 bottom-0 w-full max-w-[620px] bg-canvas z-50 slide-in overflow-y-auto scroll-thin shadow-pop">
         <div className="sticky top-0 bg-card border-b border-line px-5 py-4 flex items-start gap-3 z-10">
           <Avatar name={artist.artistName} size={44} />
@@ -392,7 +392,7 @@ function LedgerDrawer({
                   >
                     <span className={clsx(
                       "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
-                      hepsiSecili ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+                      hepsiSecili ? "bg-brand-500 border-brand-500" : "bg-card border-ink-300"
                     )}>
                       {hepsiSecili && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
                     </span>
@@ -441,7 +441,7 @@ function LedgerDrawer({
                             >
                               <span className={clsx(
                                 "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
-                                hepsi ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+                                hepsi ? "bg-brand-500 border-brand-500" : "bg-card border-ink-300"
                               )}>
                                 {hepsi && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
                               </span>
@@ -490,7 +490,7 @@ function LedgerDrawer({
                       <button key={c} onClick={() => setCurrency(c)}
                         className={clsx(
                           "px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors",
-                          currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700"
+                          currency === c ? "bg-brand-500 text-white" : "bg-card border border-line text-ink-700"
                         )}>
                         {c}
                       </button>
@@ -505,7 +505,7 @@ function LedgerDrawer({
                         onChange={(e) => setRate(e.target.value)}
                         inputMode="decimal"
                         placeholder="42,50"
-                        className="w-28 rounded-lg border border-line px-2.5 py-1.5 text-[13px] tabular bg-white outline-none focus:border-brand-500"
+                        className="w-28 rounded-lg border border-line px-2.5 py-1.5 text-[13px] tabular bg-card outline-none focus:border-brand-500"
                       />
                       <span className="text-[12.5px] text-ink-500 ml-auto">
                         Ödenecek: <b className="text-ink-900 tabular">{rateNum > 0 ? amountIn(paidAmount, currency) : "—"}</b>
@@ -517,7 +517,7 @@ function LedgerDrawer({
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Not (opsiyonel) — dekont no, açıklama…"
-                    className="w-full rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] bg-white outline-none focus:border-brand-500"
+                    className="w-full rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] bg-card outline-none focus:border-brand-500"
                   />
 
                   {err && (
@@ -649,7 +649,7 @@ function BankDialog({
 
   return (
     <>
-      <div className="fixed inset-0 bg-ink-900/25 z-40 fade-in" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50 z-40 fade-in" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-6 pointer-events-none">
         <div className="w-full max-w-md rounded-xl3 bg-card border border-line shadow-pop p-5 pointer-events-auto rise">
           <div className="flex items-start gap-3 mb-4">
@@ -676,7 +676,7 @@ function BankDialog({
                   <button key={c} onClick={() => setCurrency(c)}
                     className={clsx(
                       "px-3.5 py-2 rounded-xl text-[13px] font-medium transition-colors",
-                      currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
+                      currency === c ? "bg-brand-500 text-white" : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
                     )}>
                     {CURRENCY_LABEL[c]}
                   </button>
@@ -786,7 +786,7 @@ export function BankRequestsPanel() {
             className={clsx(
               "px-3.5 py-1.5 rounded-xl text-[12.5px] font-medium transition-colors",
               status === t.key
-                ? "bg-ink-900 text-white"
+                ? "bg-brand-500 text-white"
                 : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
             )}
           >
@@ -828,7 +828,7 @@ export function BankRequestsPanel() {
                     <button
                       onClick={() => resolve(r.id, "reject")}
                       disabled={busyId === r.id}
-                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white border border-line text-ink-600 hover:bg-ink-900/[0.03] transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-card border border-line text-ink-600 hover:bg-ink-900/[0.03] transition-colors disabled:opacity-50"
                     >
                       Reddet
                     </button>
@@ -883,7 +883,7 @@ function PeriodRow({
     >
       <span className={clsx(
         "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
-        secili ? "bg-brand-500 border-brand-500" : "bg-white border-ink-300"
+        secili ? "bg-brand-500 border-brand-500" : "bg-card border-ink-300"
       )}>
         {secili && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}
       </span>
@@ -920,7 +920,7 @@ function Segment({
           aria-pressed={value === o.v}
           className={clsx(
             "px-2 py-1 rounded-md text-[11.5px] font-medium transition-colors",
-            value === o.v ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800"
+            value === o.v ? "bg-card text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800"
           )}
         >
           {o.label}

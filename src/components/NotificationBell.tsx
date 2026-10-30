@@ -129,7 +129,7 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
           // compact: araç çubuğunda Excel indir'in yanında durduğu için
           // komşu düğmelerle aynı kenarlıklı beyaz görünüm kullanılıyor.
           compact
-            ? "w-9 h-9 justify-center bg-white border border-line text-ink-600 hover:text-ink-900 hover:bg-ink-900/[0.03]"
+            ? "w-9 h-9 justify-center bg-card border border-line text-ink-600 hover:text-ink-900 hover:bg-ink-900/[0.03]"
             : "w-full px-3 py-2.5 text-[13px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
         )}
       >
@@ -237,7 +237,7 @@ export function TabButton({
       onClick={onClick}
       className={clsx(
         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors",
-        active ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+        active ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
       )}
     >
       {children}
@@ -264,7 +264,7 @@ export function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: ()
       className={clsx(
         "w-full text-left flex gap-3 p-3 rounded-xl border transition-colors",
         unread
-          ? "bg-white border-line hover:bg-brand-50/40"
+          ? "bg-card border-line hover:bg-brand-50/40"
           : "bg-transparent border-transparent hover:bg-ink-900/[0.03]"
       )}
     >
@@ -303,7 +303,7 @@ export function AnnouncementItem({ a, onRead }: { a: AnnouncementRow; onRead: ()
       onClick={() => { setExpanded((v) => !v); onRead(); }}
       className={clsx(
         "w-full text-left p-3 rounded-xl border transition-colors",
-        unread ? "bg-white border-line hover:bg-brand-50/40" : "bg-transparent border-transparent hover:bg-ink-900/[0.03]"
+        unread ? "bg-card border-line hover:bg-brand-50/40" : "bg-transparent border-transparent hover:bg-ink-900/[0.03]"
       )}
     >
       <div className="flex items-baseline justify-between gap-2">

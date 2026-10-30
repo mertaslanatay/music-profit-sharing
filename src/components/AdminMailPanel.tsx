@@ -76,7 +76,7 @@ export function AdminMailPanel({ users }: { users: UserListRow[] }) {
           onClick={() => setManual(false)}
           className={clsx(
             "px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors",
-            !manual ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+            !manual ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
           )}
         >
           Kayıtlı kullanıcı
@@ -86,7 +86,7 @@ export function AdminMailPanel({ users }: { users: UserListRow[] }) {
           onClick={() => setManual(true)}
           className={clsx(
             "px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors",
-            manual ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+            manual ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
           )}
         >
           Elle e-posta gir

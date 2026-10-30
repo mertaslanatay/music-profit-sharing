@@ -169,7 +169,7 @@ export function Songs({
         <button
           onClick={() => setOnlyShared(!onlyShared)}
           className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
-            onlyShared ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+            onlyShared ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
           }`}
         >
           Sadece ortak yapımlar
@@ -302,7 +302,7 @@ export function Songs({
                     </Td>
                     <Td>
                       <div className="flex items-center gap-2">
-                        <Bar value={s.gross} max={max} color="#7C6BF5" />
+                        <Bar value={s.gross} max={max} color="#FF7A2F" />
                         <span className="text-[10.5px] text-ink-400 tabular w-9 text-right shrink-0">
                           {pct(res.totals.gross ? s.gross / res.totals.gross : 0)}
                         </span>

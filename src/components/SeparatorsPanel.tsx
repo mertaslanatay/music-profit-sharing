@@ -225,7 +225,7 @@ export function SeparatorsPanel({ initial }: Props) {
               onChange={(e) => setNewToken(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
               placeholder="örn. presents"
-              className="rounded-xl border border-line px-3 py-1.5 text-[13px] bg-white outline-none focus:border-brand-500 transition-colors w-[180px] font-mono"
+              className="rounded-xl border border-line px-3 py-1.5 text-[13px] bg-card outline-none focus:border-brand-500 transition-colors w-[180px] font-mono"
             />
           </div>
           <div>
@@ -233,7 +233,7 @@ export function SeparatorsPanel({ initial }: Props) {
             <select
               value={newKind}
               onChange={(e) => setNewKind(e.target.value as SeparatorKind)}
-              className="rounded-xl border border-line px-3 py-1.5 text-[13px] bg-white outline-none focus:border-brand-500 transition-colors"
+              className="rounded-xl border border-line px-3 py-1.5 text-[13px] bg-card outline-none focus:border-brand-500 transition-colors"
             >
               <option value="word">Kelime (boşlukla çevrili)</option>
               <option value="symbol">İşaret (boşluk gerekmez)</option>
@@ -254,7 +254,7 @@ export function SeparatorsPanel({ initial }: Props) {
         <input
           value={test}
           onChange={(e) => setTest(e.target.value)}
-          className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors"
+          className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors"
           placeholder="Ağaçkakan, Emiladil feat. Barış Demirel"
         />
         <div className="mt-3 flex flex-wrap gap-2">
@@ -305,14 +305,14 @@ function EditRow({
           value={token}
           onChange={(e) => setToken(e.target.value)}
           autoFocus
-          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-white outline-none focus:border-brand-500 w-[140px] font-mono"
+          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-card outline-none focus:border-brand-500 w-[140px] font-mono"
         />
       </Td>
       <Td>
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value as SeparatorKind)}
-          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-white outline-none focus:border-brand-500"
+          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-card outline-none focus:border-brand-500"
         >
           <option value="word">Kelime</option>
           <option value="symbol">İşaret</option>
@@ -323,7 +323,7 @@ function EditRow({
           value={sort}
           onChange={(e) => setSort(e.target.value.replace(/\D/g, "").slice(0, 4))}
           inputMode="numeric"
-          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-white outline-none focus:border-brand-500 w-[70px] text-right tabular"
+          className="rounded-lg border border-line px-2.5 py-1 text-[13px] bg-card outline-none focus:border-brand-500 w-[70px] text-right tabular"
         />
       </Td>
       <Td>

@@ -17,8 +17,8 @@ export function Card({
   return (
     <div
       className={clsx(
-        "rounded-xl2 bg-card border border-line shadow-card",
-        pad && "p-5",
+        "rounded-[22px] bg-card border border-line shadow-card",
+        pad && "p-5 sm:p-6",
         className
       )}
     >
@@ -39,8 +39,8 @@ export function CardHead({
   return (
     <div className="flex items-start justify-between gap-4 mb-4">
       <div className="min-w-0">
-        <h3 className="text-[15px] font-semibold text-ink-900 leading-tight">{title}</h3>
-        {sub && <p className="text-[12.5px] text-ink-500 mt-0.5">{sub}</p>}
+        <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900 leading-tight">{title}</h3>
+        {sub && <p className="text-[13px] text-ink-500 mt-1">{sub}</p>}
       </div>
       {right}
     </div>
@@ -63,21 +63,21 @@ export function Stat({
   icon?: ReactNode;
 }) {
   const badgeTone = {
-    neutral: "bg-ink-900/5 text-ink-700",
-    up: "bg-brand-50 text-brand-700",
-    down: "bg-rose-50 text-accent-rose",
-    brand: "bg-brand-50 text-brand-700",
-    violet: "bg-violet-50 text-accent-violet",
+    neutral: "bg-ink-900/[0.06] text-ink-600",
+    up: "bg-brand-500/15 text-brand-700",
+    down: "bg-accent-warn/15 text-accent-warn",
+    brand: "bg-brand-500/15 text-brand-700",
+    violet: "bg-accent-orange/15 text-accent-orange",
   }[tone];
 
   return (
-    <Card className="rise">
+    <Card className="rise !rounded-[20px]">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[13px] font-medium text-ink-500">{label}</p>
+        <p className="eyebrow">{label}</p>
         {icon}
       </div>
-      <div className="flex items-end gap-2 mt-2 flex-wrap">
-        <span className="text-[27px] leading-none font-semibold text-ink-900 tabular tracking-tight">
+      <div className="flex items-end gap-2 mt-3 flex-wrap">
+        <span className="font-display text-[28px] leading-none font-bold text-ink-900 tabular tracking-[-0.035em]">
           {value}
         </span>
         {badge && (
@@ -93,13 +93,17 @@ export function Stat({
 
 export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
   const bg = colorFor(name);
+  // Açık zeminli renklerde (gök mavisi, sarı, şeftali) beyaz yazı okunmuyor.
+  const r = parseInt(bg.slice(1, 3), 16), g = parseInt(bg.slice(3, 5), 16), b = parseInt(bg.slice(5, 7), 16);
+  const light = 0.2126 * r + 0.7152 * g + 0.0722 * b > 150;
   return (
     <span
-      className="inline-flex items-center justify-center rounded-full font-semibold text-white shrink-0 select-none"
+      className="inline-flex items-center justify-center rounded-full font-bold shrink-0 select-none"
       style={{
         width: size,
         height: size,
         background: bg,
+        color: light ? "#0B0D12" : "#FFFFFF",
         fontSize: Math.max(10, Math.round(size * 0.38)),
       }}
       aria-hidden
@@ -109,11 +113,11 @@ export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
   );
 }
 
-export function Bar({ value, max, color = "#16A75C" }: { value: number; max: number; color?: string }) {
+export function Bar({ value, max, color = "#3D5CFF" }: { value: number; max: number; color?: string }) {
   const w = max > 0 ? Math.max(1.5, (Math.max(value, 0) / max) * 100) : 0;
   return (
     <div className="h-1.5 rounded-full bg-ink-900/[0.06] overflow-hidden w-full">
-      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${w}%`, background: color }} />
+      <div className="h-full rounded-full grow-x" style={{ width: `${w}%`, background: color }} />
     </div>
   );
 }
@@ -137,7 +141,7 @@ export function Pill({
       className={clsx(
         "px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors whitespace-nowrap",
         active
-          ? "bg-ink-900 text-white"
+          ? "bg-brand-500 text-white"
           : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
       )}
     >
@@ -166,10 +170,10 @@ export function Button({
   title?: string;
 }) {
   const styles = {
-    primary: "bg-brand-500 text-white hover:bg-brand-600 shadow-sm",
-    ghost: "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]",
-    soft: "bg-ink-900/[0.05] text-ink-700 hover:bg-ink-900/[0.09]",
-    danger: "bg-white border border-rose-200 text-accent-rose hover:bg-rose-50",
+    primary: "bg-brand-500 text-white hover:brightness-110 hover:-translate-y-px shadow-accent",
+    ghost: "bg-transparent border border-line text-ink-800 hover:bg-ink-900/[0.05]",
+    soft: "bg-ink-900/[0.06] text-ink-800 hover:bg-ink-900/[0.1]",
+    danger: "bg-transparent border border-rose-200 text-accent-rose hover:bg-rose-50",
   }[variant];
   return (
     <button
@@ -178,7 +182,7 @@ export function Button({
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        "inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]",
+        "inline-flex items-center gap-2 min-h-[40px] px-4 py-2 rounded-full text-[13.5px] font-semibold transition-all duration-300 ease-out disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]",
         styles,
         className
       )}
@@ -315,8 +319,15 @@ export function Td({
 }
 
 const PATHS: Record<string, string> = {
-  dashboard: "M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 13h7v8H3z",
-  wallet: "M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 12h3",
+  dashboard: "M4.5 3h4A1.5 1.5 0 0 1 10 4.5v4A1.5 1.5 0 0 1 8.5 10h-4A1.5 1.5 0 0 1 3 8.5v-4A1.5 1.5 0 0 1 4.5 3zM15.5 3h4A1.5 1.5 0 0 1 21 4.5v4a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 14 8.5v-4A1.5 1.5 0 0 1 15.5 3zM4.5 14h4a1.5 1.5 0 0 1 1.5 1.5v4A1.5 1.5 0 0 1 8.5 21h-4A1.5 1.5 0 0 1 3 19.5v-4A1.5 1.5 0 0 1 4.5 14zM15.5 14h4a1.5 1.5 0 0 1 1.5 1.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4a1.5 1.5 0 0 1 1.5-1.5z",
+  wallet: "M3 7a2 2 0 0 1 2-2h12v4M3 7v10a2 2 0 0 0 2 2h14V9H5a2 2 0 0 1-2-2zM16 14h.01",
+  disc: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 3a9 9 0 0 1 9 9",
+  radio: "M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  shield: "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM9 12l2 2 4-4",
+  message: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
+  activity: "M3 12h4l2-6 4 12 2-6h6",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  arrowUpRight: "M7 17L17 7M8 7h9v9",
   music: "M9 18V5l10-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM19 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
   tag: "M3 7v6l8 8 8-8-8-8H5a2 2 0 0 0-2 2zM7.5 8.5h.01",
   globe: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18",
@@ -538,7 +549,7 @@ export function Drawer({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
+        className="fixed inset-0 bg-black/50 z-40 fade-in no-print"
         onClick={onClose}
         aria-hidden
       />
@@ -615,7 +626,7 @@ export function Modal({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 bg-ink-900/25 z-40 fade-in no-print"
+        className="fixed inset-0 bg-black/50 z-40 fade-in no-print"
         onClick={onClose}
         aria-hidden
       />

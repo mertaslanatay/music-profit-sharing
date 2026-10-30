@@ -60,16 +60,16 @@ export function initials(name: string): string {
 
 /** İsimden kararlı (deterministik) renk üretir — avatar rozetleri için. */
 const PALETTE = [
-  "#16A75C",
-  "#7C6BF5",
-  "#3FA9E8",
-  "#F2A93B",
-  "#E5556E",
-  "#0E8C4B",
-  "#5B8DEF",
-  "#D2649A",
-  "#2FB3A0",
-  "#B4763F",
+  "#3D5CFF",
+  "#FF7A2F",
+  "#22B8F5",
+  "#FFC234",
+  "#FF6B57",
+  "#2438B0",
+  "#7FD4FF",
+  "#FF9F7A",
+  "#8FA3FF",
+  "#D29A4A",
 ];
 
 export function colorFor(seed: string): string {

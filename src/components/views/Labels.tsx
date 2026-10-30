@@ -58,7 +58,7 @@ export function Labels({
 
         <Card className="xl:col-span-2">
           <CardHead title="Label karşılaştırması" sub="Brüt gelir" />
-          <HBar data={data} height={216} color="#F2A93B" precise={precise} />
+          <HBar data={data} height={216} color="#FFC234" precise={precise} />
         </Card>
       </div>
 

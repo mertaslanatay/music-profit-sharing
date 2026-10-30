@@ -169,7 +169,7 @@ function DbError({ message }: { message: string }) {
             <p className="text-[12.5px] text-ink-500 mt-3 leading-relaxed">
               Sayfayı yenilemeyi dene. Supabase projesi duraklatılmışsa önce onu
               yeniden başlat. Sorun sürerse{" "}
-              <code className="bg-white px-1.5 py-0.5 rounded border border-line">DATABASE_URL</code>{" "}
+              <code className="bg-card px-1.5 py-0.5 rounded border border-line">DATABASE_URL</code>{" "}
               ayarını kontrol et — şifrede özel karakter varsa URL kodlaması gerekir
               (<code>@</code> → <code>%40</code>).
             </p>

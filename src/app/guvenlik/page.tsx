@@ -39,7 +39,7 @@ export default async function SecurityPage() {
         {mfaOkFromState(state) && (
           <Link
             href="/admin"
-            className="ml-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03] transition-colors"
+            className="ml-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03] transition-colors"
           >
             <Icon name="back" size={15} /> Yönetime dön
           </Link>

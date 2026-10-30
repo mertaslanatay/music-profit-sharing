@@ -180,7 +180,7 @@ export function UsersPanel({ initial, labels, artists }: Props) {
             className={clsx(
               "px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1.5",
               filter === f
-                ? "bg-ink-900 text-white"
+                ? "bg-brand-500 text-white"
                 : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
             )}
           >
@@ -202,7 +202,7 @@ export function UsersPanel({ initial, labels, artists }: Props) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Ara..."
-            className="pl-8 pr-3 py-1.5 rounded-xl text-[13px] border border-line bg-white w-48 focus:w-64 transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
+            className="pl-8 pr-3 py-1.5 rounded-xl text-[13px] border border-line bg-card w-48 focus:w-64 transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
           />
         </div>
       </div>
@@ -434,7 +434,7 @@ function UserDetail({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
+            className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-card focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
           >
             {Object.entries(ROLE_LABEL).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
@@ -535,7 +535,7 @@ function UserDetail({
             <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
               Label Erişimi
             </label>
-            <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-line p-2 bg-white">
+            <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-line p-2 bg-card">
               {labels.map((l) => (
                 <label key={l.id} className="flex items-center gap-2 text-[13px] text-ink-700 cursor-pointer py-0.5 px-1 rounded hover:bg-ink-900/[0.03]">
                   <input
@@ -564,7 +564,7 @@ function UserDetail({
                 {selArtists.size > 0 ? `${selArtists.size} seçili` : "seçim yok"}
               </span>
             </div>
-            <div className="rounded-xl border border-line bg-white overflow-hidden">
+            <div className="rounded-xl border border-line bg-card overflow-hidden">
               <div className="relative border-b border-line">
                 <Icon
                   name="search"

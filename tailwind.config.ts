@@ -1,55 +1,63 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Ledger tasarım sistemi.
+ *
+ * Bütün renkler globals.css'teki CSS değişkenlerinden (RGB kanalları) gelir;
+ * koyu/açık tema <html data-theme="…"> ile değişir. Böylece mevcut sınıf
+ * adları (ink-900, brand-500, line…) hiç değişmeden iki temada da çalışır ve
+ * Tailwind'in saydamlık ekleri (bg-ink-900/[0.04]) korunur.
+ *
+ * Eski yeşil "brand" ölçeği artık kobalt; varsayılan rose/amber/violet/
+ * emerald paletleri de temaya bağlandı — koyu temada açık pembe kutular
+ * kalmasın diye.
+ */
+const v = (name: string) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
+const scale = (prefix: string, steps: (string | number)[]) =>
+  Object.fromEntries(steps.map((s) => [s, v(`${prefix}-${s}`)]));
+
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
-        ink: {
-          900: "#0F1720",
-          700: "#33414F",
-          500: "#64748B",
-          400: "#8A97A6",
-          300: "#B4BEC9",
-        },
-        canvas: "#F1F3F5",
-        card: "#FFFFFF",
-        line: "#E8ECEF",
-        brand: {
-          50: "#E9F9F0",
-          100: "#CFF3E0",
-          300: "#7BD9A9",
-          500: "#16A75C",
-          600: "#0E8C4B",
-          700: "#0A6E3B",
-        },
+        ink: scale("ink", [900, 800, 700, 600, 500, 400, 300]),
+        canvas: v("canvas"),
+        card: v("card"),
+        side: v("side"),
+        line: v("line"),
+        "line-strong": v("line-strong"),
+        brand: scale("brand", [50, 100, 200, 300, 400, 500, 600, 700]),
         accent: {
-          violet: "#7C6BF5",
-          amber: "#F2A93B",
-          rose: "#E5556E",
-          sky: "#3FA9E8",
+          violet: v("orange"),
+          amber: v("sun"),
+          rose: v("warn"),
+          sky: v("sky"),
+          orange: v("orange"),
+          sun: v("sun"),
+          warn: v("warn"),
         },
+        rose: scale("rose", [50, 100, 200, 600, 700]),
+        amber: scale("amber", [50, 100, 200, 700, 800, 900]),
+        violet: scale("violet", [50, 100]),
+        emerald: scale("emerald", [50, 200, 600, 700]),
       },
       fontFamily: {
-        sans: [
-          "var(--font-sans)",
-          "ui-sans-serif",
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "Roboto",
-          "Helvetica Neue",
-          "Arial",
-          "sans-serif",
-        ],
+        sans: ["var(--font-sans)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "Inter Tight", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       borderRadius: {
-        xl2: "18px",
-        xl3: "24px",
+        xl2: "20px",
+        xl3: "26px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(15,23,32,0.04), 0 1px 3px rgba(15,23,32,0.03)",
-        pop: "0 12px 32px rgba(15,23,32,0.12)",
+        card: "var(--shadow-card)",
+        pop: "var(--shadow-pop)",
+        accent: "var(--shadow-accent)",
+      },
+      transitionTimingFunction: {
+        out: "cubic-bezier(.16,1,.3,1)",
       },
     },
   },

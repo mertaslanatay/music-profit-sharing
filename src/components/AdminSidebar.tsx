@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Icon } from "./ui";
 import { LogoutButton } from "./auth/LogoutButton";
 import type { ViewerBadge } from "./Sidebar";
+import { Logo, ThemeToggle } from "./theme";
 
 const ROLE_TR: Record<ViewerBadge["role"], string> = {
   admin: "Yönetici",
@@ -35,22 +36,16 @@ export function AdminSidebar({
   viewer?: ViewerBadge | null;
 }) {
   return (
-    <aside className="w-[232px] shrink-0 bg-card border-r border-line flex flex-col h-full no-print">
-      <div className="px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center shrink-0 p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[16px] font-bold text-ink-900 leading-tight tracking-tight">M4NM</p>
-            <p className="text-[11px] text-ink-400 leading-tight">Yönetim</p>
-          </div>
-        </div>
+    <aside className="w-[240px] shrink-0 bg-side border-r border-line flex flex-col h-full no-print">
+      <div className="px-5 pt-6 pb-3">
+        <Link href="/" aria-label="M4NM Pulse — Panele dön" className="inline-block rounded-2xl p-2 -m-2 hover:bg-ink-900/[0.04] transition-colors">
+          <Logo size="md" />
+        </Link>
+          <p className="eyebrow mt-3 truncate">Yönetim</p>
       </div>
 
       <nav className="flex-1 px-3 overflow-y-auto scroll-thin">
-        <p className="px-3 pt-1 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-ink-300">
+        <p className="eyebrow px-3 pt-4 pb-2">
           Yönetim
         </p>
         {tabs.map((t) => {
@@ -61,9 +56,9 @@ export function AdminSidebar({
               type="button"
               onClick={() => onTab(t.key)}
               className={clsx(
-                "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all mb-0.5",
+                "w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium transition-colors duration-300 ease-out mb-0.5",
                 isActive
-                  ? "bg-brand-500 text-white shadow-sm"
+                  ? "bg-brand-500/[0.16] text-ink-900"
                   : "text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
               )}
             >
@@ -72,7 +67,7 @@ export function AdminSidebar({
               {!!t.badge && (
                 <span className={clsx(
                   "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                  isActive ? "bg-white/25" : "bg-accent-rose/15 text-accent-rose"
+                  "bg-accent-orange text-white"
                 )}>
                   {t.badge}
                 </span>
@@ -83,9 +78,13 @@ export function AdminSidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
+        <div className="px-1 pb-2 flex items-center justify-between">
+          <span className="eyebrow pl-2">Tema</span>
+          <ThemeToggle />
+        </div>
         <Link
           href="/"
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+          className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"
         >
           <Icon name="back" size={16} />
           <span className="flex-1 text-left">Panele dön</span>

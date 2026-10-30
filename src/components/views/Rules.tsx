@@ -39,7 +39,7 @@ export function Rules({
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-xl text-[13px] font-medium transition-colors inline-flex items-center gap-2 ${
               tab === t.key
-                ? "bg-ink-900 text-white"
+                ? "bg-brand-500 text-white"
                 : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
             }`}
           >
@@ -117,7 +117,7 @@ function SplitTab({
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
+                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-card shadow-sm transition-all ${
                       on ? "left-[18px]" : "left-0.5"
                     }`}
                   />
@@ -365,7 +365,7 @@ function WeightEditor({
                   setVals(next);
                 }}
                 inputMode="decimal"
-                className="w-20 rounded-lg border border-line pl-2.5 pr-6 py-1.5 text-[13px] tabular text-right bg-white outline-none focus:border-brand-500 transition-colors"
+                className="w-20 rounded-lg border border-line pl-2.5 pr-6 py-1.5 text-[13px] tabular text-right bg-card outline-none focus:border-brand-500 transition-colors"
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-300 pointer-events-none">
                 %
@@ -489,7 +489,7 @@ function AliasTab({
             <select
               value={manualFrom}
               onChange={(e) => setManualFrom(e.target.value)}
-              className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-white outline-none focus:border-brand-500"
+              className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-card outline-none focus:border-brand-500"
             >
               <option value="">seç…</option>
               {res.artists.map((a) => (
@@ -507,7 +507,7 @@ function AliasTab({
             <select
               value={manualTo}
               onChange={(e) => setManualTo(e.target.value)}
-              className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-white outline-none focus:border-brand-500"
+              className="w-full rounded-xl border border-line px-3 py-2 text-[13px] bg-card outline-none focus:border-brand-500"
             >
               <option value="">seç…</option>
               {res.artists.map((a) => (

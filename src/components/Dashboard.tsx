@@ -119,10 +119,10 @@ export function Dashboard({
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-line px-6 py-3.5 flex items-center gap-4 shrink-0 no-print">
+        <header className="bg-canvas/85 backdrop-blur border-b border-line px-5 sm:px-8 py-3.5 flex items-center gap-4 shrink-0 no-print">
           <div className="min-w-0">
-            <h1 className="text-[17px] font-semibold text-ink-900 leading-tight">{meta.title}</h1>
-            <p className="text-[12px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
+            <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
+            <p className="text-[12.5px] text-ink-400 leading-tight mt-0.5">{meta.sub}</p>
           </div>
 
           <div className="ml-auto flex items-center gap-2.5">
@@ -133,7 +133,7 @@ export function Dashboard({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Sanatçı, şarkı, ülke ara…"
-                className="w-56 rounded-xl border border-line bg-canvas pl-9 pr-3 py-2 text-[13px] outline-none focus:border-brand-500 focus:bg-white transition-all"
+                className="w-64 h-10 rounded-xl border border-line bg-card pl-9 pr-3 text-[13.5px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition-all"
               />
               {query && (
                 <button onClick={() => setQuery("")}
@@ -146,9 +146,9 @@ export function Dashboard({
             <button
               onClick={() => setPrecise(!precise)}
               title="Mikro tutarlar için 4 ondalık"
-              className={`px-3 py-2 rounded-xl text-[12.5px] font-medium transition-colors border ${
-                precise ? "bg-ink-900 text-white border-ink-900"
-                        : "bg-white border-line text-ink-500 hover:text-ink-900"
+              className={`h-10 px-3 rounded-xl text-[12.5px] font-medium tabular transition-colors border ${
+                precise ? "bg-brand-500 text-white border-brand-500"
+                        : "bg-card border-line text-ink-500 hover:text-ink-900"
               }`}
             >
               0,0000
@@ -177,9 +177,9 @@ export function Dashboard({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto scroll-thin p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto scroll-thin px-5 sm:px-8 lg:px-10 py-6 space-y-5">
           {/* ------------------------------------------------ dönem seçici */}
-          <div className={`rounded-xl2 bg-card border border-line shadow-card p-4 flex flex-wrap items-center gap-x-6 gap-y-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
+          <div className={`rounded-[22px] bg-card border border-line p-4 flex flex-wrap items-center gap-x-6 gap-y-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
             {isPayouts ? (
               <PayoutPicker
                 reports={reports}
@@ -238,7 +238,7 @@ export function Dashboard({
                   </span>
                 )}
                 <p className="text-[10.5px] font-medium text-brand-700/70 leading-tight">DAĞITILACAK NET</p>
-                <p className="text-[17px] font-semibold text-brand-700 tabular leading-tight mt-0.5">
+                <p className="font-display text-[18px] font-bold text-brand-700 tabular leading-tight mt-0.5">
                   {money(t.received)}
                 </p>
               </div>

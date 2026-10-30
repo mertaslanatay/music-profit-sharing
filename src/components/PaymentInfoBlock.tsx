@@ -103,7 +103,7 @@ export function PaymentInfoBlock({
   };
 
   return (
-    <div className="rounded-xl border border-line bg-white p-3.5">
+    <div className="rounded-xl border border-line bg-card p-3.5">
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <Icon name="bank" size={15} className="text-ink-400 shrink-0" />
@@ -168,8 +168,8 @@ export function PaymentInfoBlock({
                   className={clsx(
                     "px-2.5 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors",
                     currency === c
-                      ? "bg-ink-900 text-white"
-                      : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
+                      ? "bg-brand-500 text-white"
+                      : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
                   )}
                   title={CURRENCY_LABEL[c]}
                 >
@@ -217,7 +217,7 @@ export function PaymentInfoBlock({
 }
 
 const inputCls =
-  "w-full rounded-lg border border-line px-2.5 py-1.5 text-[13px] bg-white outline-none focus:border-brand-500 transition-colors";
+  "w-full rounded-lg border border-line px-2.5 py-1.5 text-[13px] bg-card outline-none focus:border-brand-500 transition-colors";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -147,7 +147,7 @@ export function Payouts({
           <button
             onClick={() => setLabelFilter("")}
             className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
-              !labelFilter ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+              !labelFilter ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
             }`}
           >
             Tümü
@@ -158,7 +158,7 @@ export function Payouts({
               onClick={() => setLabelFilter(labelFilter === l.label ? "" : l.label)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
                 labelFilter === l.label
-                  ? "bg-ink-900 text-white"
+                  ? "bg-brand-500 text-white"
                   : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
               }`}
             >

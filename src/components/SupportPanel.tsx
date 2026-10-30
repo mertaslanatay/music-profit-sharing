@@ -112,7 +112,7 @@ export function SupportPanel({ mode }: { mode: "user" | "admin" }) {
             onClick={() => setFilter(f)}
             className={clsx(
               "px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors",
-              filter === f ? "bg-ink-900 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+              filter === f ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
             )}
           >
             {f === "all" ? "Tümü" : STATUS[f].label}
@@ -127,7 +127,7 @@ export function SupportPanel({ mode }: { mode: "user" | "admin" }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Kullanıcı veya konu ara…"
-            className="ml-auto rounded-xl border border-line px-3 py-1.5 text-[13px] bg-white outline-none focus:border-brand-500 transition-colors min-w-[220px]"
+            className="ml-auto rounded-xl border border-line px-3 py-1.5 text-[13px] bg-card outline-none focus:border-brand-500 transition-colors min-w-[220px]"
           />
         )}
 
@@ -285,7 +285,7 @@ function NewThreadForm({
             maxLength={160}
             autoFocus
             placeholder="örn. Mart dönemi hakedişimde soru"
-            className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors"
+            className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors"
           />
         </div>
         <div>
@@ -296,7 +296,7 @@ function NewThreadForm({
             rows={6}
             maxLength={8000}
             placeholder="Neye ihtiyacın olduğunu yaz."
-            className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
+            className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ function ThreadView({
           rows={3}
           maxLength={8000}
           placeholder={detail.status === "closed" ? "Yazarsan konuşma yeniden açılır…" : "Cevabını yaz…"}
-          className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
+          className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
         />
         <div className="flex items-center gap-2 mt-2">
           <Button variant="primary" onClick={send} disabled={busy || !reply.trim()}>

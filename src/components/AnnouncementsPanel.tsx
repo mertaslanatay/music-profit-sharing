@@ -108,7 +108,7 @@ export function AnnouncementsPanel() {
               onChange={(e) => setTitle(e.target.value)}
               maxLength={160}
               placeholder="örn. Şarkı bazlı gelir hakkı devri geldi"
-              className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors"
+              className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors"
             />
           </div>
           <div>
@@ -119,7 +119,7 @@ export function AnnouncementsPanel() {
               rows={4}
               maxLength={4000}
               placeholder="Neyin değiştiğini kısa ve net anlat."
-              className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-white outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
+              className="w-full rounded-xl border border-line px-3.5 py-2 text-[13.5px] bg-card outline-none focus:border-brand-500 transition-colors resize-y leading-relaxed"
             />
             <p className="text-[11px] text-ink-300 mt-1">{body.length}/4000</p>
           </div>
@@ -147,7 +147,7 @@ export function AnnouncementsPanel() {
                 key={a.id}
                 className={clsx(
                   "rounded-xl border p-3.5",
-                  a.publishedAt ? "border-line bg-white" : "border-dashed border-line bg-ink-900/[0.02]"
+                  a.publishedAt ? "border-line bg-card" : "border-dashed border-line bg-ink-900/[0.02]"
                 )}
               >
                 <div className="flex items-start justify-between gap-3">

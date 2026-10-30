@@ -380,7 +380,7 @@ function BankChangeForm({
             <button key={c} onClick={() => setCurrency(c)}
               className={clsx(
                 "px-3.5 py-2 rounded-xl text-[13px] font-medium transition-colors",
-                currency === c ? "bg-ink-900 text-white" : "bg-white border border-line text-ink-700 hover:bg-ink-900/[0.03]"
+                currency === c ? "bg-brand-500 text-white" : "bg-card border border-line text-ink-700 hover:bg-ink-900/[0.03]"
               )}>
               {CURRENCY_LABEL[c]}
             </button>

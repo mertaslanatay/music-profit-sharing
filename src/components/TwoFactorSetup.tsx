@@ -200,7 +200,7 @@ function EnrollState({ onDone }: { onDone?: () => void }) {
     <Card>
       <p className="text-[14.5px] font-semibold text-ink-900 mb-3">QR kodu tara</p>
       {enroll?.qrCode && (
-        <div className="flex justify-center bg-white rounded-xl border border-line p-4 mb-3">
+        <div className="flex justify-center bg-card rounded-xl border border-line p-4 mb-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={enroll.qrCode} alt="2FA QR kodu" width={180} height={180} />
         </div>

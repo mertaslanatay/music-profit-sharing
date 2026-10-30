@@ -358,7 +358,7 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
                         "text-[11.5px] px-2.5 py-1 rounded-lg border",
                         p.existingReports.length > 0
                           ? "bg-amber-50 text-accent-amber border-amber-200"
-                          : "bg-white text-ink-700 border-line"
+                          : "bg-card text-ink-700 border-line"
                       )}
                       title={
                         p.existingReports.length > 0
@@ -561,7 +561,7 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {stats.periods.map((p) => (
-                <span key={p.label} className="text-[11.5px] px-2.5 py-1 rounded-lg bg-white text-ink-700 border border-brand-100">
+                <span key={p.label} className="text-[11.5px] px-2.5 py-1 rounded-lg bg-card text-ink-700 border border-brand-100">
                   {p.label} · {money(p.gross, true)}
                 </span>
               ))}
@@ -686,7 +686,7 @@ export function AdminPanel({ initialReports }: { initialReports: ReportRow[] }) 
 
 function Mini({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white p-3">
+    <div className="rounded-xl bg-card p-3">
       <p className="text-[10.5px] text-ink-400 mb-1">{label}</p>
       <p className="text-[15px] font-semibold text-ink-900 tabular">{value}</p>
     </div>

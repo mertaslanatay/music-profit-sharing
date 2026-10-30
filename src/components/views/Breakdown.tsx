@@ -52,7 +52,7 @@ export function Breakdown({
 
   const title = isGeo ? "Coğrafya" : "Platformlar";
   const unitLabel = isGeo ? "ülke" : "platform";
-  const color = isGeo ? "#3FA9E8" : "#16A75C";
+  const color = isGeo ? "#22B8F5" : "#3D5CFF";
 
   const concentration = all.length > 0 ? all[0].value / (total || 1) : 0;
 
@@ -94,7 +94,7 @@ export function Breakdown({
             <select
               value={artistKey}
               onChange={(e) => setArtistKey(e.target.value)}
-              className="rounded-xl border border-line px-3 py-1.5 text-[12.5px] bg-white outline-none focus:border-brand-500 transition-colors max-w-[220px]"
+              className="rounded-xl border border-line px-3 py-1.5 text-[12.5px] bg-card outline-none focus:border-brand-500 transition-colors max-w-[220px]"
             >
               <option value="">Tüm sanatçılar</option>
               {res.artists.slice(0, 120).map((a) => (

@@ -61,7 +61,7 @@ export function PayoutPicker({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="rounded-xl border border-line px-3 py-1.5 text-[13px] font-medium bg-white outline-none focus:border-brand-500 transition-colors min-w-[240px]"
+          className="rounded-xl border border-line px-3 py-1.5 text-[13px] font-medium bg-card outline-none focus:border-brand-500 transition-colors min-w-[240px]"
         >
           <option value="all">{offLabel}</option>
           {published.map((r) => (
@@ -179,7 +179,7 @@ export function AnalysisPicker({
           type="button"
           onClick={() => toggleOpen("year")}
           className={clsx(
-            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-white outline-none transition-colors min-w-[130px] text-left inline-flex items-center gap-2",
+            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-card outline-none transition-colors min-w-[130px] text-left inline-flex items-center gap-2",
             openWhich === "year" ? "border-brand-500" : "border-line hover:border-ink-300"
           )}
         >
@@ -234,7 +234,7 @@ export function AnalysisPicker({
           type="button"
           onClick={() => toggleOpen("period")}
           className={clsx(
-            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-white outline-none transition-colors min-w-[170px] text-left inline-flex items-center gap-2",
+            "rounded-xl border px-3 py-1.5 text-[13px] font-medium bg-card outline-none transition-colors min-w-[170px] text-left inline-flex items-center gap-2",
             openWhich === "period" ? "border-brand-500" : "border-line hover:border-ink-300"
           )}
         >
@@ -321,7 +321,7 @@ function Box({ checked, partial }: { checked: boolean; partial?: boolean }) {
         "w-4 h-4 rounded-[5px] border shrink-0 flex items-center justify-center transition-colors",
         checked ? "bg-brand-500 border-brand-500"
           : partial ? "bg-brand-100 border-brand-300"
-          : "bg-white border-ink-300"
+          : "bg-card border-ink-300"
       )}
     >
       {checked && <Icon name="check" size={11} className="text-white" strokeWidth={3} />}

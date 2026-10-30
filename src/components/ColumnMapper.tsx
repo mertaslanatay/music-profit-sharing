@@ -89,7 +89,7 @@ export function ColumnMapper({
                       else next[f.key] = Number(v);
                       onChange(next);
                     }}
-                    className={`w-full rounded-xl border px-3 py-2 text-[13px] bg-white outline-none transition-colors ${
+                    className={`w-full rounded-xl border px-3 py-2 text-[13px] bg-card outline-none transition-colors ${
                       matched ? "border-line text-ink-900" : "border-rose-200 text-ink-400"
                     } focus:border-brand-500`}
                   >

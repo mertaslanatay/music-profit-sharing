@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { Icon } from "./ui";
 import { LogoutButton } from "./auth/LogoutButton";
+import { Logo, ThemeToggle } from "./theme";
 
 export type ViewKey =
   | "overview"
@@ -18,9 +19,9 @@ export const NAV: { key: ViewKey; label: string; icon: string; group: string }[]
   { key: "overview", label: "Panel", icon: "dashboard", group: "Analiz" },
   { key: "payouts", label: "Ödeme Listesi", icon: "wallet", group: "Analiz" },
   { key: "songs", label: "Şarkılar", icon: "music", group: "Analiz" },
-  { key: "labels", label: "Label", icon: "tag", group: "Analiz" },
+  { key: "labels", label: "Label", icon: "disc", group: "Analiz" },
   { key: "geo", label: "Coğrafya", icon: "globe", group: "Analiz" },
-  { key: "platforms", label: "Platformlar", icon: "play", group: "Analiz" },
+  { key: "platforms", label: "Platformlar", icon: "radio", group: "Analiz" },
   { key: "rules", label: "Kurallar", icon: "sliders", group: "Ayarlar" },
 ];
 
@@ -58,24 +59,16 @@ export function Sidebar({
   const items = hideRules ? NAV.filter((i) => i.key !== "rules") : NAV;
   let lastGroup = "";
   return (
-    <aside className="w-[232px] shrink-0 bg-card border-r border-line flex flex-col h-full no-print">
-      <div className="px-5 pt-5 pb-4">
+    <aside className="w-[240px] shrink-0 bg-side border-r border-line flex flex-col h-full no-print">
+      <div className="px-5 pt-6 pb-3">
         <button
           type="button"
           onClick={() => onView("overview")}
           title="Panel'e git"
-          className="flex items-center gap-2.5 text-left rounded-xl -m-1 p-1 hover:bg-ink-900/[0.03] transition-colors"
+          aria-label="M4NM Pulse — Panel'e git"
+          className="rounded-2xl p-2 -m-2 hover:bg-ink-900/[0.04] transition-colors"
         >
-          <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center shrink-0 p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="M4NM" className="w-full h-full object-contain" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[16px] font-bold text-ink-900 leading-tight tracking-tight">M4NM</p>
-            <p className="text-[14px] font-extrabold text-brand-600 leading-tight tracking-tight -mt-0.5">
-              Pulse
-            </p>
-          </div>
+          <Logo size="md" />
         </button>
       </div>
 
@@ -87,7 +80,7 @@ export function Sidebar({
           return (
             <div key={item.key}>
               {showGroup && (
-                <p className="px-3 pt-4 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-ink-300">
+                <p className="eyebrow px-3 pt-5 pb-2">
                   {item.group}
                 </p>
               )}
@@ -95,13 +88,14 @@ export function Sidebar({
                 type="button"
                 onClick={() => onView(item.key)}
                 className={clsx(
-                  "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all mb-0.5",
+                  "w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium transition-colors duration-300 ease-out mb-0.5",
                   active
-                    ? "bg-brand-500 text-white shadow-sm"
-                    : "text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
+                    ? "bg-brand-500/[0.16] text-ink-900"
+                    : "text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900"
                 )}
+                aria-current={active ? "page" : undefined}
               >
-                <Icon name={item.icon} size={17} strokeWidth={active ? 2 : 1.8} />
+                <Icon name={item.icon} size={18} strokeWidth={1.75} className={active ? "text-brand-700" : undefined} />
                 <span className="flex-1 text-left">{item.label}</span>
               </button>
             </div>
@@ -110,15 +104,19 @@ export function Sidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
+        <div className="px-1 pb-2 flex items-center justify-between">
+          <span className="eyebrow pl-2">Tema</span>
+          <ThemeToggle />
+        </div>
         {/* Yönetim yalnızca yöneticide görünür. Bu bir kolaylık; asıl engel
             sunucu tarafındaki yetki denetimidir. */}
         {(!viewer || viewer.isAdmin) && (
           <button
             type="button"
             onClick={onReset}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+            className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"
           >
-            <Icon name="sliders" size={16} />
+            <Icon name="shield" size={17} />
             <span className="flex-1 text-left">Yönetim</span>
             <Icon name="back" size={13} className="rotate-180 opacity-50" />
           </button>
@@ -130,9 +128,9 @@ export function Sidebar({
         {viewer && !viewer.isAdmin && (
           <Link
             href="/destek"
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+            className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"
           >
-            <Icon name="copy" size={16} />
+            <Icon name="message" size={17} />
             <span className="flex-1 text-left">İletişim</span>
           </Link>
         )}
@@ -140,7 +138,7 @@ export function Sidebar({
         {viewer?.role === "artist" && (
           <Link
             href="/hesabim"
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900 transition-all"
+            className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"
           >
             <Icon name="wallet" size={16} />
             <span className="flex-1 text-left">Hesabım</span>
@@ -148,12 +146,17 @@ export function Sidebar({
         )}
 
         {viewer && (
-          <div className="pt-1.5 mt-1.5 border-t border-line">
-            <div className="px-3 py-2">
-              <p className="text-[12.5px] font-medium text-ink-900 truncate" title={viewer.email}>
-                {viewer.fullName}
-              </p>
-              <p className="text-[11px] text-ink-400 leading-tight mt-0.5">{ROLE_TR[viewer.role]}</p>
+          <div className="pt-2 mt-2 border-t border-line">
+            <div className="px-3 py-2 flex items-center gap-3">
+              <span className="w-9 h-9 rounded-full bg-brand-500 text-white grid place-items-center text-[12px] font-bold shrink-0" aria-hidden>
+                {viewer.fullName.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toLocaleUpperCase("tr-TR")}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13.5px] font-semibold text-ink-900 truncate" title={viewer.email}>
+                  {viewer.fullName}
+                </span>
+                <span className="block text-[12px] text-ink-400 leading-tight mt-0.5">{ROLE_TR[viewer.role]}</span>
+              </span>
             </div>
             <LogoutButton />
           </div>

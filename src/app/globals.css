@@ -2,9 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+/* ------------------------------------------------------------------
+   Ledger tasarım sistemi — tema değişkenleri
+   Değerler: "M4NM Pulse — Ledger" tasarım sistemi (tokens.json).
+   Renkler RGB kanalı olarak tutulur ki Tailwind'in /alpha ekleri çalışsın.
+   ------------------------------------------------------------------ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --c-canvas: 11 13 18;       /* bg */
+  --c-side: 8 10 14;          /* surface-side */
+  --c-card: 18 21 28;         /* surface */
+  --c-line: 37 41 50;         /* line (≈ beyaz %8, opak) */
+  --c-line-strong: 58 63 74;  /* line-strong */
+
+  --c-ink-900: 244 246 250;
+  --c-ink-800: 226 230 238;
+  --c-ink-700: 205 211 222;
+  --c-ink-600: 176 184 198;
+  --c-ink-500: 154 163 178;
+  --c-ink-400: 134 144 160;
+  --c-ink-300: 112 121 137;
+
+  /* kobalt — eski yeşil "brand" ölçeğinin yerine */
+  --c-brand-50: 25 32 64;
+  --c-brand-100: 33 43 88;
+  --c-brand-200: 47 61 128;
+  --c-brand-300: 76 98 200;
+  --c-brand-400: 99 124 255;
+  --c-brand-500: 61 92 255;
+  --c-brand-600: 91 116 255;
+  --c-brand-700: 143 163 255;
+
+  --c-orange: 255 122 47;
+  --c-sun: 255 194 52;
+  --c-sky: 34 184 245;
+  --c-warn: 255 138 92;
+
+  --c-rose-50: 46 24 22;
+  --c-rose-100: 66 32 28;
+  --c-rose-200: 104 48 38;
+  --c-rose-600: 255 128 100;
+  --c-rose-700: 255 150 125;
+  --c-amber-50: 44 34 14;
+  --c-amber-100: 62 47 18;
+  --c-amber-200: 102 76 24;
+  --c-amber-700: 255 194 90;
+  --c-amber-800: 255 205 115;
+  --c-amber-900: 255 222 150;
+  --c-violet-50: 48 30 20;
+  --c-violet-100: 70 42 26;
+  --c-emerald-50: 25 32 64;
+  --c-emerald-200: 47 61 128;
+  --c-emerald-600: 143 163 255;
+  --c-emerald-700: 143 163 255;
+
+  --chart-axis: #8690a0;
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-cursor: rgba(255, 255, 255, 0.05);
+
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-pop: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  --shadow-accent: 0 10px 30px -12px #3d5cff;
+  --shadow-float: 0 40px 80px -48px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --c-canvas: 245 246 250;
+  --c-side: 255 255 255;
+  --c-card: 255 255 255;
+  --c-line: 227 230 237;
+  --c-line-strong: 205 210 220;
+
+  --c-ink-900: 11 13 18;
+  --c-ink-800: 30 35 45;
+  --c-ink-700: 45 52 66;
+  --c-ink-600: 68 76 92;
+  --c-ink-500: 86 96 114;
+  --c-ink-400: 104 114 131;
+  --c-ink-300: 150 158 172;
+
+  --c-brand-50: 237 241 255;
+  --c-brand-100: 221 228 255;
+  --c-brand-200: 191 205 255;
+  --c-brand-300: 150 170 255;
+  --c-brand-400: 92 120 250;
+  --c-brand-500: 47 79 240;
+  --c-brand-600: 44 71 214;
+  --c-brand-700: 34 56 176;
+
+  --c-orange: 242 102 26;
+  --c-sun: 235 170 10;
+  --c-sky: 14 159 230;
+  --c-warn: 194 65 12;
+
+  --c-rose-50: 254 241 237;
+  --c-rose-100: 253 226 218;
+  --c-rose-200: 250 200 186;
+  --c-rose-600: 194 65 12;
+  --c-rose-700: 160 50 10;
+  --c-amber-50: 255 248 230;
+  --c-amber-100: 255 238 196;
+  --c-amber-200: 250 222 160;
+  --c-amber-700: 150 95 5;
+  --c-amber-800: 125 78 5;
+  --c-amber-900: 100 60 5;
+  --c-violet-50: 255 241 232;
+  --c-violet-100: 255 226 206;
+  --c-emerald-50: 237 241 255;
+  --c-emerald-200: 191 205 255;
+  --c-emerald-600: 44 71 214;
+  --c-emerald-700: 34 56 176;
+
+  --chart-axis: #687283;
+  --chart-grid: rgba(11, 13, 18, 0.07);
+  --chart-cursor: rgba(11, 13, 18, 0.04);
+
+  --shadow-card: 0 1px 2px rgba(11, 13, 18, 0.04);
+  --shadow-pop: 0 18px 44px -18px rgba(11, 13, 18, 0.25);
+  --shadow-accent: 0 10px 30px -12px #2f4ff0;
+  --shadow-float: 0 40px 80px -48px rgba(11, 13, 18, 0.25);
 }
 
 html,
@@ -13,11 +134,12 @@ body {
 }
 
 body {
-  background: #f1f3f5;
-  color: #0f1720;
+  background: rgb(var(--c-canvas));
+  color: rgb(var(--c-ink-900));
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.35s ease, color 0.35s ease;
 }
 
 * {
@@ -25,21 +147,33 @@ body {
 }
 
 ::selection {
-  background: #cff3e0;
-  color: #0a6e3b;
+  background: rgb(var(--c-brand-200));
+  color: rgb(var(--c-ink-900));
 }
+
+input,
+select,
+textarea {
+  color-scheme: inherit;
+}
+
+/* Logo: koyu temada beyaz, açıkta koyu çizim */
+.logo-on-dark { display: block; }
+.logo-on-light { display: none; }
+[data-theme="light"] .logo-on-dark { display: none; }
+[data-theme="light"] .logo-on-light { display: block; }
 
 /* İnce, sessiz kaydırma çubukları */
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5dd transparent;
+  scrollbar-color: rgb(var(--c-line-strong)) transparent;
 }
 .scroll-thin::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #cbd5dd;
+  background: rgb(var(--c-line-strong));
   border-radius: 99px;
 }
 .scroll-thin::-webkit-scrollbar-track {
@@ -48,6 +182,14 @@ body {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--c-ink-500));
 }
 
 @keyframes rise {
@@ -88,6 +230,43 @@ body {
 }
 .fade-in {
   animation: fadeIn 0.2s ease both;
+}
+
+/* Grafik animasyonları (AOS kartı görünür yaptığında tetiklenir) */
+@keyframes growX {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes growY {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.grow-x {
+  transform-origin: left;
+  animation: growX 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.grow-y {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: growY 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(30px, -20px); }
+}
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  animation: drift 14s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .slide-in, .fade-in, .grow-x, .grow-y, .orb {
+    animation: none !important;
+  }
 }
 
 @media print {

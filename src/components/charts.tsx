@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  Area,
+  AreaChart,
+  CartesianGrid,
   Bar,
   BarChart,
   Cell,
@@ -14,14 +17,14 @@ import {
 import { compact, money } from "@/lib/format";
 
 export const CHART_COLORS = [
-  "#16A75C",
-  "#7C6BF5",
-  "#3FA9E8",
-  "#F2A93B",
-  "#E5556E",
-  "#2FB3A0",
-  "#5B8DEF",
-  "#D2649A",
+  "#3D5CFF",
+  "#FF7A2F",
+  "#22B8F5",
+  "#FFC234",
+  "#FF6B57",
+  "#8FA3FF",
+  "#7FD4FF",
+  "#FF9F7A",
 ];
 
 function TipBox({
@@ -42,12 +45,12 @@ function TipBox({
   const name = p.payload?.full ?? p.payload?.name ?? String(label ?? "");
   return (
     <div className="rounded-xl bg-ink-900 px-3 py-2 shadow-pop">
-      <p className="text-[11.5px] text-white/60 mb-0.5 max-w-[220px] truncate">{name}</p>
-      <p className="text-[14px] font-semibold text-white tabular">
+      <p className="text-[11.5px] text-canvas/70 mb-0.5 max-w-[220px] truncate">{name}</p>
+      <p className="text-[15px] font-display font-bold text-canvas tabular">
         {money(Number(p.value ?? 0), precise)}
       </p>
       {p.payload?.share !== undefined && (
-        <p className="text-[11px] text-white/50 mt-0.5 tabular">
+        <p className="text-[11px] text-canvas/60 mt-0.5 tabular">
           %{(p.payload.share * 100).toFixed(1).replace(".", ",")}
         </p>
       )}
@@ -59,7 +62,7 @@ function TipBox({
 export function HBar({
   data,
   height = 300,
-  color = "#16A75C",
+  color = "#3D5CFF",
   precise,
   onClick,
 }: {
@@ -86,10 +89,10 @@ export function HBar({
           width={128}
           tickLine={false}
           axisLine={false}
-          tick={{ fontSize: 12, fill: "#64748B" }}
+          tick={{ fontSize: 12, fill: "var(--chart-axis)" }}
           interval={0}
         />
-        <Tooltip content={<TipBox precise={precise} />} cursor={{ fill: "rgba(15,23,32,0.04)" }} />
+        <Tooltip content={<TipBox precise={precise} />} cursor={{ fill: "var(--chart-cursor)" }} />
         <Bar
           dataKey="value"
           fill={`url(#hb-${color.slice(1)})`}
@@ -110,7 +113,7 @@ export function HBar({
 export function VBar({
   data,
   height = 260,
-  color = "#16A75C",
+  color = "#3D5CFF",
   precise,
 }: {
   data: { name: string; value: number; full?: string }[];
@@ -151,7 +154,7 @@ export function VBar({
           dataKey="name"
           tickLine={false}
           axisLine={false}
-          tick={{ fontSize: 11.5, fill: "#8A97A6" }}
+          tick={{ fontSize: 11.5, fill: "var(--chart-axis)" }}
           interval={interval}
           height={duz ? 26 : 44}
           angle={duz ? 0 : -32}
@@ -161,11 +164,11 @@ export function VBar({
         <YAxis
           tickLine={false}
           axisLine={false}
-          tick={{ fontSize: 11, fill: "#B4BEC9" }}
+          tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
           tickFormatter={(v: number) => compact(v)}
           width={54}
         />
-        <Tooltip content={<TipBox precise={precise} />} cursor={{ fill: "rgba(15,23,32,0.04)" }} />
+        <Tooltip content={<TipBox precise={precise} />} cursor={{ fill: "var(--chart-cursor)" }} />
         <Bar dataKey="value" fill="url(#vb)" radius={[7, 7, 0, 0]} maxBarSize={44} />
       </BarChart>
     </ResponsiveContainer>
@@ -179,12 +182,14 @@ export function Donut({
   centerLabel,
   centerValue,
   precise,
+  colors = CHART_COLORS,
 }: {
   data: { name: string; value: number; share?: number }[];
   height?: number;
   centerLabel?: string;
   centerValue?: string;
   precise?: boolean;
+  colors?: string[];
 }) {
   if (data.length === 0) return <div style={{ height }} />;
   return (
@@ -197,11 +202,14 @@ export function Donut({
             nameKey="name"
             innerRadius="63%"
             outerRadius="92%"
-            paddingAngle={2.5}
+            paddingAngle={3}
+            cornerRadius={6}
             stroke="none"
+            animationDuration={1400}
+            animationEasing="ease-out"
           >
             {data.map((d, i) => (
-              <Cell key={d.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              <Cell key={d.name} fill={colors[i % colors.length]} />
             ))}
           </Pie>
           <Tooltip content={<TipBox precise={precise} />} />
@@ -209,7 +217,7 @@ export function Donut({
       </ResponsiveContainer>
       {centerValue && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-[19px] font-semibold text-ink-900 tabular leading-none">
+          <span className="text-[22px] font-display font-bold tracking-tight text-ink-900 tabular leading-none">
             {centerValue}
           </span>
           {centerLabel && (
@@ -218,5 +226,72 @@ export function Donut({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Alan grafiği — dönemler boyunca gelirin seyri.
+ * Ledger: sky → kobalt gradyan çizgi, yumuşak (monotone) eğri, hafif dolgu,
+ * kesik ızgara; üzerine gelince ipucu.
+ */
+export function AreaTrend({
+  data,
+  height = 260,
+  precise,
+}: {
+  data: { name: string; value: number; full?: string }[];
+  height?: number;
+  precise?: boolean;
+}) {
+  if (data.length === 0) return <div style={{ height }} />;
+  const HEDEF_ETIKET = 8;
+  const interval = data.length <= HEDEF_ETIKET ? 0 : Math.ceil(data.length / HEDEF_ETIKET) - 1;
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 12, right: 12, bottom: 0, left: -8 }}>
+        <defs>
+          <linearGradient id="at-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgb(var(--c-brand-500))" stopOpacity={0.36} />
+            <stop offset="100%" stopColor="rgb(var(--c-brand-500))" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="at-line" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgb(var(--c-sky))" />
+            <stop offset="100%" stopColor="rgb(var(--c-brand-500))" />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
+        <XAxis
+          dataKey="name"
+          tickLine={false}
+          axisLine={false}
+          tick={{ fontSize: 11.5, fill: "var(--chart-axis)" }}
+          interval={interval}
+          minTickGap={8}
+          dy={6}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
+          tickFormatter={(v: number) => compact(v)}
+          width={58}
+        />
+        <Tooltip
+          content={<TipBox precise={precise} />}
+          cursor={{ stroke: "rgb(var(--c-ink-900))", strokeOpacity: 0.25, strokeDasharray: "2 4" }}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="url(#at-line)"
+          strokeWidth={3}
+          fill="url(#at-fill)"
+          activeDot={{ r: 6, fill: "rgb(var(--c-brand-500))", stroke: "rgb(var(--c-card))", strokeWidth: 3 }}
+          dot={false}
+          animationDuration={1800}
+          animationEasing="ease-out"
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }
