@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { listReports, type ReportRow } from "@/lib/queries";
 import { listBalances, type BalanceRow } from "@/lib/payments";
 import { AdminTabs } from "@/components/AdminTabs";
@@ -14,8 +14,33 @@ import { listSeparators } from "@/lib/separators";
 import type { Separator } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+// Vercel'in kendi zaman aşımı devreye girerse ekranda yalnızca opak bir
+// digest kalır. Sınırı açıkça koyuyoruz; db.ts'teki kapı 20 sn'de anlaşılır
+// bir hatayla vazgeçtiği için hata her zaman aşağıdaki kırmızı kutuya düşer.
+export const maxDuration = 30;
 
+/**
+ * Ana sayfadakiyle (src/app/page.tsx) aynı koruma. Next.js üretimde sunucu
+ * bileşeni hatalarının mesajını istemciye göndermez — yakalamazsak kullanıcı
+ * yalnızca bir digest görür ya da "Yönetim"e tıklayınca hiçbir şey olmaz.
+ * Önceden yalnızca veri sorguları try/catch içindeydi; getSession(), audit()
+ * ve MFA okuması korumasızdı. Veritabanı uyurken (Supabase duraklatma)
+ * tam olarak bunlar patlıyordu.
+ *
+ * redirect()/notFound() de hata fırlatarak çalışır; unstable_rethrow() onları
+ * aynen geçirir, yalnızca gerçek hatalarda geri döner.
+ */
 export default async function AdminPage() {
+  try {
+    return await AdminInner();
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pulse] yönetim sayfası sunucu hatası:", e);
+    return <DbError message={e instanceof Error ? e.message : String(e)} />;
+  }
+}
+
+async function AdminInner() {
   // Yönetim ekranı tüm sanatçıların rakamlarını gösterir — yönetici dışında
   // kimse giremez. Bağlantıyı elle yazan da giremez.
   let viewer: Viewer | null = null;
@@ -114,25 +139,8 @@ export default async function AdminPage() {
   }
 
   if (error) {
-    return (
-      <main className="min-h-screen p-6 max-w-7xl mx-auto">
-        <div className="rounded-xl2 bg-rose-50 border border-rose-200 p-5">
-          <div className="flex items-start gap-3">
-            <Icon name="alert" size={18} className="text-accent-rose mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[14px] font-semibold text-accent-rose">Veritabanına bağlanılamadı</p>
-              <p className="text-[13px] text-accent-rose/85 mt-1.5 leading-relaxed">{error}</p>
-              <p className="text-[12.5px] text-ink-500 mt-3 leading-relaxed">
-                <code className="bg-white px-1.5 py-0.5 rounded border border-line">.env.local</code>{" "}
-                dosyasındaki <code className="bg-white px-1.5 py-0.5 rounded border border-line">DATABASE_URL</code>{" "}
-                değerini kontrol et. Şifrede <code>@</code> gibi özel karakter varsa
-                URL kodlaması gerekir (<code>@</code> → <code>%40</code>).
-              </p>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
+    console.error("[pulse] yönetim sayfası veri hatası:", error);
+    return <DbError message={error} />;
   }
 
   return (
@@ -146,5 +154,28 @@ export default async function AdminPage() {
       viewer={viewerBadge}
       mfa={mfa}
     />
+  );
+}
+
+function DbError({ message }: { message: string }) {
+  return (
+    <main className="min-h-screen p-6 max-w-7xl mx-auto">
+      <div className="rounded-xl2 bg-rose-50 border border-rose-200 p-5">
+        <div className="flex items-start gap-3">
+          <Icon name="alert" size={18} className="text-accent-rose mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[14px] font-semibold text-accent-rose">Yönetim ekranı yüklenemedi</p>
+            <p className="text-[13px] text-accent-rose/85 mt-1.5 leading-relaxed">{message}</p>
+            <p className="text-[12.5px] text-ink-500 mt-3 leading-relaxed">
+              Sayfayı yenilemeyi dene. Supabase projesi duraklatılmışsa önce onu
+              yeniden başlat. Sorun sürerse{" "}
+              <code className="bg-white px-1.5 py-0.5 rounded border border-line">DATABASE_URL</code>{" "}
+              ayarını kontrol et — şifrede özel karakter varsa URL kodlaması gerekir
+              (<code>@</code> → <code>%40</code>).
+            </p>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
