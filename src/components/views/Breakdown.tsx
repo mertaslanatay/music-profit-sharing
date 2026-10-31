@@ -5,10 +5,61 @@ import type { Result } from "@/lib/types";
 import { foldKey } from "@/lib/normalize";
 import { money, moneySmart, num, pct } from "@/lib/format";
 import { countryTr, flagOf } from "@/lib/flags";
-import { Bar, Card, CardHead, Empty, Stat } from "../ui";
+import { Bar, Card, CardHead, Drawer, Empty, Icon, Stat } from "../ui";
 import { CHART_COLORS, Donut, HBar } from "../charts";
 import type { SongGeo } from "@/lib/queries";
 import { SongGeoCard } from "./SongGeoCard";
+
+/** Tam liste kartında gösterilen satır; fazlası "Daha fazla gör" çekmecesinde. */
+const PREVIEW_ROWS = 20;
+
+type Row = { raw: string; name: string; value: number; share: number };
+
+function FullTable({ rows, max, isGeo, color, precise, rankOf }: {
+  rows: Row[]; max: number; isGeo: boolean; color: string; precise: boolean;
+  /** Çekmecede arama yapılınca sıra numarası tam listedeki yerini göstersin. */
+  rankOf?: (d: Row) => number;
+}) {
+  const th = "px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide text-ink-400";
+  return (
+    <div className="overflow-x-auto scroll-thin">
+      <table className="w-full min-w-[420px]">
+        <thead className="bg-ink-900/[0.02] border-b border-line">
+          <tr>
+            <th className={`${th} text-left w-10`}>#</th>
+            <th className={`${th} text-left`}>{isGeo ? "Ülke" : "Platform"}</th>
+            <th className={`${th} text-right`}>Gelir</th>
+            <th className={`${th} text-left w-36`}>Pay</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {rows.map((d, i) => (
+            <tr key={d.raw} className="hover:bg-ink-900/[0.02]">
+              <td className="px-3 py-2 text-[12px] text-ink-300 tabular">{rankOf ? rankOf(d) : i + 1}</td>
+              <td className="px-3 py-2 text-[13px] text-ink-900">
+                <span className="flex items-center gap-2">
+                  {isGeo && <span className="text-[14px] leading-none">{flagOf(d.raw)}</span>}
+                  {d.name}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-right text-[13px] tabular font-medium text-ink-900">
+                {moneySmart(d.value, precise)}
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Bar value={d.value} max={max} color={color} />
+                  <span className="text-[10.5px] text-ink-400 tabular w-10 text-right shrink-0">
+                    {pct(d.share ?? 0)}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
  * Ülke ve platform ekranları aynı yapıyı paylaşır: genel kırılım + sanatçı seçimiyle
@@ -32,6 +83,8 @@ export function Breakdown({
   ownSongs?: boolean;
 }) {
   const [artistKey, setArtistKey] = useState<string>("");
+  const [fullOpen, setFullOpen] = useState(false);
+  const [drawerQuery, setDrawerQuery] = useState("");
 
   const isGeo = mode === "geo";
   const artist = res.artists.find((a) => a.key === artistKey) ?? null;
@@ -52,6 +105,11 @@ export function Breakdown({
       .filter((d) => (q ? foldKey(d.name).includes(q) || foldKey(d.raw).includes(q) : true))
       .sort((a, b) => b.value - a.value);
   }, [source, total, query, isGeo]);
+
+  const drawerRows = useMemo(() => {
+    const q = foldKey(drawerQuery);
+    return q ? all.filter((d) => foldKey(d.name).includes(q) || foldKey(d.raw).includes(q)) : all;
+  }, [all, drawerQuery]);
 
   const top = all.slice(0, 12);
   const rest = all.slice(12);
@@ -155,60 +213,61 @@ export function Breakdown({
         )}
       </Card>
 
-      <Card pad={false}>
-        <div className="px-5 py-4 border-b border-line">
-          <h3 className="text-[15px] font-semibold text-ink-900">Tam liste</h3>
-          <p className="text-[12.5px] text-ink-500 mt-0.5">
-            {num(all.length)} {unitLabel} · {artist ? artist.name : "tüm sanatçılar"}
-          </p>
-        </div>
-        <div className="overflow-x-auto scroll-thin">
-          <table className="w-full min-w-[520px]">
-            <thead className="bg-ink-900/[0.02] border-b border-line">
-              <tr>
-                <th className="px-3 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-ink-400 w-10">
-                  #
-                </th>
-                <th className="px-3 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">
-                  {isGeo ? "Ülke" : "Platform"}
-                </th>
-                <th className="px-3 py-2.5 text-right text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">
-                  Gelir
-                </th>
-                <th className="px-3 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-ink-400 w-40">
-                  Pay
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {all.slice(0, 300).map((d, i) => (
-                <tr key={d.name} className="hover:bg-ink-900/[0.02]">
-                  <td className="px-3 py-2 text-[12px] text-ink-300 tabular">{i + 1}</td>
-                  <td className="px-3 py-2 text-[13px] text-ink-900">
-                    <span className="flex items-center gap-2">
-                      {isGeo && <span className="text-[14px] leading-none">{flagOf(d.raw)}</span>}
-                      {d.name}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right text-[13px] tabular font-medium text-ink-900">
-                    {moneySmart(d.value, precise)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Bar value={d.value} max={all[0]?.value ?? 0} color={color} />
-                      <span className="text-[10.5px] text-ink-400 tabular w-10 text-right shrink-0">
-                        {pct(d.share ?? 0)}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {/* Tam liste + (Coğrafya'da) en çok dinlenen 10 şarkı — geniş ekranda
+          yan yana, alan tasarrufu için. Tam liste kartta ilk 20; tamamı
+          sağdan açılan çekmecede. */}
+      <div className={isGeo && songsGeo ? "grid grid-cols-1 xl:grid-cols-2 gap-4 items-start" : ""}>
+        <Card pad={false}>
+          <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-line">
+            <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900 leading-tight">Tam liste</h3>
+            <p className="text-[13px] text-ink-500 mt-1">
+              {num(all.length)} {unitLabel} · {artist ? artist.name : "tüm sanatçılar"}
+              {all.length > PREVIEW_ROWS && <> · ilk {PREVIEW_ROWS} gösteriliyor</>}
+            </p>
+          </div>
+          <FullTable rows={all.slice(0, PREVIEW_ROWS)} max={all[0]?.value ?? 0} isGeo={isGeo}
+            color={color} precise={precise} />
+          {all.length > PREVIEW_ROWS && (
+            <button
+              type="button"
+              onClick={() => setFullOpen(true)}
+              className="w-full flex items-center justify-center gap-1.5 border-t border-line px-4 py-3 text-[13px] font-semibold text-brand-700 hover:bg-ink-900/[0.02] rounded-b-[22px] transition-colors"
+            >
+              Daha fazla gör · {num(all.length)} {unitLabel}
+              <Icon name="forward" size={14} />
+            </button>
+          )}
+        </Card>
 
-      {isGeo && songsGeo && <SongGeoCard songs={songsGeo} own={ownSongs} />}
+        {isGeo && songsGeo && <SongGeoCard songs={songsGeo} own={ownSongs} />}
+      </div>
+
+      <Drawer
+        open={fullOpen}
+        onClose={() => { setFullOpen(false); setDrawerQuery(""); }}
+        title={`Tüm ${isGeo ? "ülkeler" : "platformlar"}`}
+        sub={`${num(all.length)} ${unitLabel} · ${artist ? artist.name : "tüm sanatçılar"}`}
+        width={620}
+      >
+        <div className="relative mb-3">
+          <Icon name="search" size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none" />
+          <input
+            value={drawerQuery}
+            onChange={(e) => setDrawerQuery(e.target.value)}
+            placeholder={isGeo ? "Ülke ara…" : "Platform ara…"}
+            aria-label={isGeo ? "Ülke ara" : "Platform ara"}
+            className="w-full h-10 rounded-xl border border-line bg-card pl-9 pr-3 text-[13.5px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition-all"
+          />
+        </div>
+        <div className="rounded-[18px] border border-line overflow-hidden">
+          <FullTable rows={drawerRows} max={all[0]?.value ?? 0} isGeo={isGeo} color={color}
+            precise={precise} rankOf={(d) => all.indexOf(d) + 1} />
+          {drawerRows.length === 0 && (
+            <p className="px-4 py-8 text-center text-[13px] text-ink-400">Sonuç yok.</p>
+          )}
+        </div>
+      </Drawer>
     </div>
   );
 }
