@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
 import type { PeriodRow, ReportRow, SongGeo } from "@/lib/queries";
@@ -33,6 +33,9 @@ import type { ArtistAgg } from "@/lib/types";
  */
 const EXPORT_VIEWS: ViewKey[] = ["payouts"];
 
+/** Sunucusuz geçilebilen ekranlar (page.tsx'teki VIEWS ile aynı liste). */
+const CLIENT_VIEWS: ViewKey[] = ["overview", "payouts", "artists", "songs", "albums", "labels", "geo", "platforms"];
+
 /** Üstteki arama kutusunun gerçekten süzdüğü ekranlar. */
 const SEARCHABLE: ViewKey[] = ["payouts", "songs", "geo", "platforms"];
 
@@ -52,7 +55,7 @@ export function Dashboard({
   result,
   periods,
   reports,
-  view,
+  view: serverView,
   reportId,
   transferReportId,
   periodIds,
@@ -107,9 +110,36 @@ export function Dashboard({
     startTransition(() => router.push(qs ? `/?${qs}` : "/"));
   };
 
+  // ---------------------------------------------------------------- ekran
+  // Sekme geçişi SUNUCUYA GİTMİYOR (faz-z10). Önceden her tıklama sunucunun
+  // tüm veriyi (~870 KB) baştan hazırlayıp göndermesini bekliyordu (0,9–1,5 sn),
+  // oysa Panel, Albümler, Şarkılar… aynı veriyi kullanıyor. Artık ekran
+  // adresteki ?v= değerinden okunuyor; veri kapsamı aynıysa yalnızca adres
+  // güncelleniyor (history.pushState — Next.js yönlendiricisiyle uyumlu,
+  // geri/ileri düğmeleri çalışır). Kapsam farklıysa (Ödeme Listesi tek bir
+  // ödeme partisine, diğerleri dönem seçimine bakar) eskisi gibi sunucuya gidilir.
+  const view: ViewKey = (() => {
+    const v = sp.get("v");
+    return v && (CLIENT_VIEWS as string[]).includes(v) ? (v as ViewKey) : v ? serverView : "overview";
+  })();
+  const dataScope = (v: ViewKey) =>
+    v === "payouts"
+      ? (reportId === "all" ? "" : `r:${reportId}`)
+      : (periodIds.length ? `p:${periodIds.join(",")}` : "");
+  const contentRef = useRef<HTMLDivElement>(null);
+
   const setView = (v: ViewKey) => {
     setQuery("");
-    nav({ v: v === "overview" ? null : v });
+    if (dataScope(v) !== dataScope(view)) {
+      nav({ v: v === "overview" ? null : v });
+      return;
+    }
+    const next = new URLSearchParams(sp.toString());
+    if (v === "overview") next.delete("v");
+    else next.set("v", v);
+    const qs = next.toString();
+    window.history.pushState(null, "", qs ? `/?${qs}` : "/");
+    contentRef.current?.scrollTo({ top: 0 });
   };
 
   const artist = useMemo(() => {
@@ -262,7 +292,7 @@ export function Dashboard({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 lg:px-10 py-5 sm:py-6 space-y-5">
+        <div ref={contentRef} className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 lg:px-10 py-5 sm:py-6 space-y-5">
           {/* ------------------------------------------------ dönem seçici */}
           <div className={`rounded-[22px] bg-card border border-line p-4 flex flex-wrap items-center gap-x-6 gap-y-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
             {isPayouts ? (

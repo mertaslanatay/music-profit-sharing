@@ -4,7 +4,7 @@ import { resolveViewAs } from "@/lib/viewAs";
 import { pendingTotal } from "@/lib/payments";
 import { redactOtherArtists } from "@/lib/redact";
 import { PreviewBanner } from "@/components/PreviewBanner";
-import { listPeriods, listReports, loadResult, topSongsGeo, type Scope, type SongGeo } from "@/lib/queries";
+import { listPeriodsCached, listReportsCached, loadResult, topSongsGeo, type Scope, type SongGeo } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
@@ -84,7 +84,7 @@ async function Dash({
 
   let periods, reports;
   try {
-    [periods, reports] = await Promise.all([listPeriods(true, access), listReports(access)]);
+    [periods, reports] = await Promise.all([listPeriodsCached(true, access), listReportsCached(access)]);
   } catch (e) {
     return <Fail message={e instanceof Error ? e.message : "Veritabanına bağlanılamadı."} />;
   }
@@ -137,9 +137,10 @@ async function Dash({
   // sanatçı (veya önizlenen sanatçı) yalnızca kendi bekleyen tutarını görür.
   // Label yöneticisi / muhasebe için anlamlı tek bir rakam yok (bakiye
   // sanatçı bazında, label bazında değil) — gösterilmez.
+  // Sekme geçişleri artık sunucuya gitmiyor (faz-z10) — bu yüzden Panel'e ve
+  // Coğrafya'ya özel ek veriler hangi ekrandan girilirse girilsin baştan yüklenir.
   const pendingWho: "all" | "artist" | null =
-    view !== "overview" ? null
-      : !authConfigured() ? "all"
+    !authConfigured() ? "all"
       : preview || viewer?.role === "artist" ? ((viewer?.artistIds.length ?? 0) > 0 ? "artist" : null)
       : isAdmin(viewer) ? "all"
       : null;
@@ -155,13 +156,11 @@ async function Dash({
         : Promise.resolve(null),
       // Coğrafya: en çok dinlenen 10 şarkı. Sanatçı hesabında — label geneli
       // yetkisi olsa bile — yalnızca KENDİ şarkıları.
-      view === "geo"
-        ? topSongsGeo(
-            scope,
-            viewer?.role === "artist" ? viewer.artistIds : null,
-            viewer?.role === "artist" ? 5 : 10, // sanatçıda 5 yeter (Mert)
-          ).catch(() => null)
-        : Promise.resolve(null),
+      topSongsGeo(
+        scope,
+        viewer?.role === "artist" ? viewer.artistIds : null,
+        viewer?.role === "artist" ? 5 : 10, // sanatçıda 5 yeter (Mert)
+      ).catch(() => null),
     ]);
     songsGeo = g;
     // Yönetici olmayan kimse başka bir sanatçının hakedişini görmez — label

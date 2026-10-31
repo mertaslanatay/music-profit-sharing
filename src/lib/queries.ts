@@ -779,3 +779,21 @@ export async function topSongsGeo(
     return out;
   });
 }
+
+
+/* ------------------------------------------- panel için önbellekli listeler */
+
+/**
+ * Panel sayfası her istekte dönem ve rapor listesini çekiyordu; dönem listesi
+ * tüm kredileri dönem bazında topladığı için canlıda her istekte ~470 ms
+ * sürüyordu (önbelleksiz). İkisi de yalnızca veri değişince (data_version)
+ * değişir — panel sonucuyla aynı önbelleğe alındı. Yönetim ekranı kendi
+ * listReports() çağrısını önbelleksiz kullanmaya devam ediyor.
+ */
+export function listPeriodsCached(publishedOnly: boolean, access?: AccessScope): Promise<PeriodRow[]> {
+  return cachedByVersion(`periods:${scopeKey({ access, publishedOnly })}`, () => listPeriods(publishedOnly, access));
+}
+
+export function listReportsCached(access?: AccessScope): Promise<ReportRow[]> {
+  return cachedByVersion(`reports:${scopeKey({ access })}`, () => listReports(access));
+}

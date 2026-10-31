@@ -121,7 +121,8 @@ interface Kayit<T> {
 }
 
 const store = new Map<string, Kayit<unknown>>();
-const MAX_KAYIT = 24;
+// Panel sonucu + dönem/rapor listeleri + coğrafya kartı aynı depoda (faz-z10).
+const MAX_KAYIT = 64;
 /** Emniyet supabı: sürüm artışı bir şekilde kaçarsa kayıt yine de bayatlamaz. */
 const TTL_MS = 10 * 60 * 1000;
 
