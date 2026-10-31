@@ -42,6 +42,7 @@ export async function middleware(req: NextRequest) {
       p.startsWith("/api/") &&
       !SAFE_METHODS.has(req.method) &&
       p !== "/api/admin/view-as" &&
+      p !== "/api/session/check" && // yalnızca denetim kaydı yazar, veri değiştirmez
       !p.startsWith("/api/auth")
     ) {
       return NextResponse.json(

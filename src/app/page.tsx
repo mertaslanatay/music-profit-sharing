@@ -3,6 +3,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { resolveViewAs } from "@/lib/viewAs";
 import { pendingTotal } from "@/lib/payments";
 import { redactOtherArtists } from "@/lib/redact";
+import { scopeFingerprint } from "@/lib/scopePrint";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { listPeriodsCached, listReportsCached, loadResult, topSongsGeo, type Scope, type SongGeo } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
@@ -198,6 +199,7 @@ async function Dash({
       transferReportId={transferReportId}
       periodIds={periodIds}
       pendingPay={pending}
+      scopeFp={authConfigured() ? scopeFingerprint(viewer) : null}
       songsGeo={songsGeo}
       viewer={viewer ? {
         fullName: viewer.fullName,

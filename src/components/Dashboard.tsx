@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
 import type { PeriodRow, ReportRow, SongGeo } from "@/lib/queries";
 import { NotificationBell } from "./NotificationBell";
+import { logClientView, useSessionWatch } from "./useSessionWatch";
 import { MenuButton, NavShell } from "./MobileNav";
 import { exportWorkbook } from "@/lib/export";
 import { scopeArtistToLabel } from "@/lib/calc";
@@ -63,6 +64,7 @@ export function Dashboard({
   preview = null,
   pendingPay = null,
   songsGeo = null,
+  scopeFp = null,
 }: {
   result: Result;
   periods: PeriodRow[];
@@ -86,6 +88,8 @@ export function Dashboard({
   pendingPay?: { amount: number; who: "all" | "artist" } | null;
   /** Coğrafya ekranındaki "en çok dinlenen 10 şarkı" kartı. */
   songsGeo?: SongGeo[] | null;
+  /** Yetki parmak izi — arka plan oturum nöbeti için (null: kimlik doğrulama kapalı). */
+  scopeFp?: string | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -127,6 +131,19 @@ export function Dashboard({
       ? (reportId === "all" ? "" : `r:${reportId}`)
       : (periodIds.length ? `p:${periodIds.join(",")}` : "");
   const contentRef = useRef<HTMLDivElement>(null);
+  const checkSession = useSessionWatch(scopeFp);
+
+  // Ekran her değiştiğinde (tıklama veya geri/ileri) denetim kaydı. İlk
+  // görüntü sunucuda zaten kaydedildi; sunucudan gelen yeni bir sayfa da
+  // (dönem değişimi) kendi kaydını yazar — yalnızca istemci geçişleri buradan.
+  const loggedView = useRef<{ view: ViewKey; server: ViewKey } | null>(null);
+  useEffect(() => {
+    const prev = loggedView.current;
+    loggedView.current = { view, server: serverView };
+    if (!scopeFp || !prev) return;               // ilk görüntü: sunucu kaydetti
+    if (prev.server !== serverView) return;       // sunucudan yeni sayfa: o kaydetti
+    if (prev.view !== view) logClientView(view);
+  }, [view, serverView, scopeFp]);
 
   const setView = (v: ViewKey) => {
     setQuery("");
@@ -140,6 +157,9 @@ export function Dashboard({
     const qs = next.toString();
     window.history.pushState(null, "", qs ? `/?${qs}` : "/");
     contentRef.current?.scrollTo({ top: 0 });
+    // Sunucuya gidilmediği için oturum burada kontrol edilir (faz-z11);
+    // denetim kaydı aşağıdaki efektte (geri/ileri tuşlarını da kapsasın diye).
+    if (scopeFp) void checkSession();
   };
 
   const artist = useMemo(() => {
