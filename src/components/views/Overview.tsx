@@ -17,7 +17,9 @@ import { isUgcRetailer } from "@/lib/ugc";
  * Panel — Ledger yerleşimi.
  * Sıra: tek büyük rakam (net hakediş + bekleyen ödeme) → 4 gösterge → seyir grafiği +
  * en çok kazananlar → platform halkası + ödeme listesi → ayrıntı kartları.
- * Her blok AOS ile aşağıdan belirir; grafikler kendi animasyonuyla çizilir.
+ * Panel'de AOS (kaydırınca belirme) bilinçli olarak KAPALI (Mert, 31 Eki 2026):
+ * ana ekran açılır açılmaz tamamen görünür olmalı. Grafiklerin kendi çizim
+ * animasyonları duruyor. AOS giriş/kayıt ekranında kullanılmaya devam ediyor.
  */
 export function Overview({
   res,
@@ -108,7 +110,7 @@ export function Overview({
   return (
     <div className="space-y-6">
       {/* ------------------------------------------------ tek büyük rakam */}
-      <section data-aos="fade-up" className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-1">
+      <section className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-1">
         <div className="min-w-0">
           {/* "Dağıtılacak" DEĞİL: bu rakam ödenmiş olanları da içerir. Asıl
               dağıtılacak tutar sağdaki "Bekleyen ödeme". */}
@@ -231,7 +233,7 @@ export function Overview({
 
       {/* ------------------------------------------------ seyir + en çok kazananlar */}
       <div className="flex flex-wrap gap-5">
-        <div data-aos="fade-up" className="flex-[2_1_520px] min-w-0">
+        <div className="flex-[2_1_520px] min-w-0">
           <Card className="h-full">
             {periodData.length > 1 ? (
               <>
@@ -255,7 +257,7 @@ export function Overview({
           </Card>
         </div>
 
-        <div data-aos="fade-up" data-aos-delay="100" className="flex-[1_1_300px] min-w-0">
+        <div className="flex-[1_1_300px] min-w-0">
           <Card className="h-full">
             <CardHead title="En çok kazananlar" sub="Kesinti sonrası net" />
             <ol className="space-y-[18px]">
@@ -283,7 +285,7 @@ export function Overview({
 
       {/* ------------------------------------------------ coğrafya + gelir türleri */}
       <div className="flex flex-wrap gap-5">
-        <div data-aos="fade-up" className="flex-[2_1_560px] min-w-0">
+        <div className="flex-[2_1_560px] min-w-0">
           <Card className="h-full">
             <CardHead
               title="Coğrafya"
@@ -335,7 +337,7 @@ export function Overview({
           </Card>
         </div>
 
-        <div data-aos="fade-up" data-aos-delay="100" className="flex-[1_1_300px] min-w-0">
+        <div className="flex-[1_1_300px] min-w-0">
           <Card className="h-full">
             <CardHead title="Gelir türleri" sub="Satış sınıflandırmasına göre" />
             <Donut data={salesData} colors={DONUT_COLORS} height={190}
@@ -356,7 +358,7 @@ export function Overview({
 
       {/* ------------------------------------------------ mecralar + ödeme listesi */}
       <div className="flex flex-wrap gap-5">
-        <div data-aos="fade-up" className="flex-[1_1_340px] min-w-0">
+        <div className="flex-[1_1_340px] min-w-0">
           <Card className="h-full">
             <CardHead
               title="Streaming mecraları"
@@ -386,7 +388,7 @@ export function Overview({
           </Card>
         </div>
 
-        <div data-aos="fade-up" data-aos-delay="100" className="flex-[2_1_520px] min-w-0">
+        <div className="flex-[2_1_520px] min-w-0">
           <Card className="h-full">
             <CardHead title="Ödeme listesi" sub={`İlk 9 sanatçı · net oran ${t.netRate.toLocaleString("tr-TR", { maximumFractionDigits: 5 })}`} />
             <div className="overflow-x-auto -mx-1">
@@ -428,7 +430,7 @@ export function Overview({
 
       {/* ------------------------------------------------ dönem performansı + şarkılar + label */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div data-aos="fade-up">
+        <div>
           <Card className="h-full">
             <CardHead title="Dönem performansı" sub="Son dönemler · bir öncekine göre değişim" />
             {periodRows.length === 0 ? (
@@ -451,7 +453,7 @@ export function Overview({
             )}
           </Card>
         </div>
-        <div data-aos="fade-up" data-aos-delay="50">
+        <div>
           <Card className="h-full">
             <CardHead title="Şarkılar" sub="Bölüşüm öncesi şarkı geliri" />
             <div className="space-y-0.5">
@@ -462,7 +464,7 @@ export function Overview({
             </div>
           </Card>
         </div>
-        <div data-aos="fade-up" data-aos-delay="100">
+        <div>
           <Card className="h-full">
             <CardHead title="Label dağılımı" sub="Gelirin label bazında kırılımı" />
             <Donut data={labelData} height={170} centerValue={compact(t.gross)} centerLabel="toplam brüt" precise={precise} />
@@ -479,7 +481,7 @@ export function Overview({
         </div>
       </div>
 
-      <div data-aos="fade-up">
+      <div>
         <Card>
           <CardHead title="Bölüşüm özeti" sub="Gelirin tek sahipli ve ortak yapımlar arasındaki dağılımı" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4">
@@ -521,7 +523,7 @@ function Kpi({
   delay: number;
 }) {
   return (
-    <div data-aos="fade-up" data-aos-delay={delay}
+    <div
       className="rounded-[20px] bg-card border border-line p-5 flex flex-col gap-3.5 min-w-0">
       <div className="flex items-center justify-between gap-3 min-h-[32px]">
         <p className="eyebrow flex items-center gap-2">
@@ -559,7 +561,7 @@ function Insight({
     sun: "bg-accent-sun/20 text-amber-700",
   }[tone];
   return (
-    <div data-aos="fade-up" data-aos-delay={delay}
+    <div
       className="rounded-[20px] bg-card border border-line p-5 flex items-start gap-4 min-w-0">
       <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${chip}`}>
         <Icon name={icon} size={18} />
