@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Icon } from "./ui";
 import { LogoutButton } from "./auth/LogoutButton";
 import type { ViewerBadge } from "./Sidebar";
-import { Logo, ThemeToggle } from "./theme";
+import { Logo } from "./theme";
 
 const ROLE_TR: Record<ViewerBadge["role"], string> = {
   admin: "Yönetici",
@@ -75,10 +75,6 @@ export function AdminSidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
-        <div className="px-1 pb-2 flex items-center justify-between">
-          <span className="eyebrow pl-2">Tema</span>
-          <ThemeToggle />
-        </div>
         <Link
           href="/"
           className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"

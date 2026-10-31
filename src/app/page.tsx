@@ -189,6 +189,7 @@ async function Dash({
         email: viewer.email,
         role: viewer.role,
         isAdmin: preview ? false : isAdmin(viewer),
+        artistIds: viewer.role === "artist" ? viewer.artistIds : undefined,
       } : null}
       preview={preview ? {
         artistName: preview.artistName,

@@ -20,11 +20,17 @@ export function Albums({
   periods,
   precise,
   onArtist,
+  openableArtistKeys,
 }: {
   res: Result;
   periods: PeriodRow[];
   precise: boolean;
   onArtist: (key: string) => void;
+  /**
+   * Verilirse yalnızca bu sanatçıların dökümü açılabilir (sanatçı hesabı:
+   * albümdeki diğer sanatçıların net hakedişine buradan ulaşılmasın).
+   */
+  openableArtistKeys?: Set<string>;
 }) {
   const [query, setQuery] = useState("");
   const [artist, setArtist] = useState("");
@@ -155,7 +161,10 @@ export function Albums({
           setOpen(null);
           onArtist(key);
         }}
-        canOpenArtist={(name) => artistKeyByName.has(name)}
+        canOpenArtist={(name) => {
+          const key = artistKeyByName.get(name);
+          return !!key && (!openableArtistKeys || openableArtistKeys.has(key));
+        }}
       />
     </div>
   );

@@ -23,7 +23,15 @@ import { Artists } from "./views/Artists";
 import { Albums } from "./views/Albums";
 import { PreviewBanner, startPreview, type PreviewInfo } from "./PreviewBanner";
 import { buildAlbums } from "@/lib/catalog";
+import { ThemeToggle } from "./theme";
 import type { ArtistAgg } from "@/lib/types";
+
+/**
+ * Excel indir yalnızca rapor niteliğindeki ekranda: Ödeme Listesi. İndirilen
+ * dosya zaten tüm kırılımları (sanatçı, şarkı, label, ülke, platform) ayrı
+ * sayfalarda içeriyor; her ekranda ayrı düğme gereksiz tekrar.
+ */
+const EXPORT_VIEWS: ViewKey[] = ["payouts"];
 
 /** Üstteki arama kutusunun gerçekten süzdüğü ekranlar. */
 const SEARCHABLE: ViewKey[] = ["payouts", "songs", "geo", "platforms"];
@@ -122,15 +130,30 @@ export function Dashboard({
         ? (periods.find((p) => p.id === periodIds[0])?.display ?? "1 dönem")
         : `${periodIds.length} dönem`;
 
-  const meta = TITLES[view];
+  const meta = view === "artists" && viewer?.role === "artist"
+    ? { title: "Sanatçı profillerim", sub: "Hesabına bağlı sanatçı adların ve hakedişleri" }
+    : TITLES[view];
   const t = result.totals;
 
   // Sanatçılar ekranı tek sanatçılık bir hesapta anlamsız (yalnızca kendini
   // görür) — gizlenir. Sayaçlar dönem seçimine göre değişir.
   const albumCount = useMemo(() => buildAlbums(result).length, [result]);
-  const hidden: ViewKey[] = result.artists.length > 1 ? [] : ["artists"];
+
+  // Sanatçı hesabında "Sanatçılar" bölümü yalnızca HESABA BAĞLI sanatçı
+  // kimliklerini gösterir (ör. bir kişinin iki ayrı sahne adı). Label geneli
+  // görme yetkisi olsa bile burada diğer sanatçıların net hakedişi listelenmez.
+  const artistMode = viewer?.role === "artist";
+  const ownIds = useMemo(() => new Set(viewer?.artistIds ?? []), [viewer?.artistIds]);
+  const catalogRes = useMemo(
+    () => (artistMode ? { ...result, artists: result.artists.filter((a) => a.id && ownIds.has(a.id)) } : result),
+    [artistMode, result, ownIds]
+  );
+  const hidden: ViewKey[] = artistMode
+    ? (catalogRes.artists.length > 0 ? [] : ["artists"])
+    : (result.artists.length > 1 ? [] : ["artists"]);
+  const navLabels: Partial<Record<ViewKey, string>> = artistMode ? { artists: "Sanatçı profillerim" } : {};
   const counts: Partial<Record<ViewKey, number>> = {
-    artists: result.artists.length,
+    artists: catalogRes.artists.length,
     songs: result.songs.length,
     albums: albumCount,
   };
@@ -155,13 +178,14 @@ export function Dashboard({
         viewer={viewer}
         counts={counts}
         hidden={hidden}
+        labels={navLabels}
         preview={!!preview}
       />
       </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
         {preview && <PreviewBanner info={preview} />}
-        <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 flex items-center gap-3 sm:gap-4 shrink-0 no-print">
+        <header className="relative z-30 bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 flex items-center gap-3 sm:gap-4 shrink-0 no-print">
           <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
           <div className="min-w-0">
             <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
@@ -205,8 +229,11 @@ export function Dashboard({
             {/* Bildirim zili artık kenar çubuğunda değil, birincil eylemin
                 (Excel indir) hemen solunda — kullanıcı bakışının zaten
                 düştüğü yer burası. Birincil eylem en sağda kalıyor. */}
+            <ThemeToggle size="sm" />
+
             {viewer && !preview && <NotificationBell compact />}
 
+            {EXPORT_VIEWS.includes(view) && viewer?.role !== "artist" && (
             <Button
               onClick={() => {
                 // Denetim kaydı: indirmeyi engellemesin diye sonucu beklemiyoruz.
@@ -222,6 +249,7 @@ export function Dashboard({
               <Icon name="download" size={15} />
               <span className="hidden sm:inline">Excel indir</span>
             </Button>
+            )}
           </div>
         </header>
 
@@ -342,11 +370,12 @@ export function Dashboard({
               />
             )}
             {view === "artists" && (
-              <Artists res={result} periods={periods} precise={precise}
+              <Artists res={catalogRes} periods={periods} precise={precise}
                 onArtist={(k) => onArtist(k)} onViewAs={onViewAs} />
             )}
             {view === "albums" && (
-              <Albums res={result} periods={periods} precise={precise} onArtist={(k) => onArtist(k)} />
+              <Albums res={result} periods={periods} precise={precise} onArtist={(k) => onArtist(k)}
+                openableArtistKeys={artistMode ? new Set(catalogRes.artists.map((a) => a.key)) : undefined} />
             )}
             {view === "labels" && <Labels res={result} precise={precise} onArtist={onArtist} />}
             {view === "geo" && <Breakdown res={result} precise={precise} query={query} mode="geo" />}

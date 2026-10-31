@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import type { AnnouncementRow, InboxSummary, NotificationRow, NotificationType } from "@/lib/notify";
 import Link from "next/link";
 
-import { Button, Empty, Icon, Modal } from "./ui";
+import { Empty, Icon } from "./ui";
 
 /**
- * Bildirim merkezi — zil düğmesi + sağdan açılan panel (M4NM Pulse § 1).
+ * Bildirim merkezi — zil düğmesi + hemen altında açılan menü (M4NM Pulse § 1).
+ * Modal değil: sayfayı karartmaz, dışarı tıklayınca veya Esc ile kapanır —
+ * alışılmış sosyal ağ / e-posta bildirim menüsü davranışı.
  *
  * İki akış tek panelde, sekmeyle ayrılmış:
  *  • Bildirimler  → kişiye özel olaylar (ödeme, hesap, banka, talep)
@@ -57,6 +59,25 @@ const MODAL_LIMIT = 10;
 
 export function NotificationBell({ compact }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Dışarı tıklama ve Esc kapatır; Esc'te odak zile döner.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); btnRef.current?.focus(); }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   const [tab, setTab] = useState<"bildirim" | "guncelleme">("bildirim");
   const [inbox, setInbox] = useState<InboxSummary>(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -115,21 +136,21 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
   };
 
   return (
-    <>
+    <div ref={wrapRef} className="relative">
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
         title="Bildirimler"
-        // compact hâlde düğmenin içinde metin YOK; erişilebilir ad hesabı
-        // içeriği önce aldığı için ekran okuyucu yalnızca okunmamış sayısını
-        // ("3, düğme") söylüyordu. Açık bir ad şart.
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        // compact hâlde düğmenin içinde metin YOK; erişilebilir ad şart.
         aria-label={total > 0 ? `Bildirimler, ${total} okunmamış` : "Bildirimler"}
         className={clsx(
           "relative flex items-center gap-2.5 rounded-xl font-medium transition-all",
-          // compact: araç çubuğunda Excel indir'in yanında durduğu için
-          // komşu düğmelerle aynı kenarlıklı beyaz görünüm kullanılıyor.
           compact
-            ? "w-9 h-9 justify-center bg-card border border-line text-ink-600 hover:text-ink-900 hover:bg-ink-900/[0.03]"
+            ? clsx("w-10 h-10 justify-center border text-ink-600 hover:text-ink-900",
+                open ? "bg-ink-900/[0.06] border-line-strong text-ink-900" : "bg-card border-line hover:bg-ink-900/[0.03]")
             : "w-full px-3 py-2.5 text-[13px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
         )}
       >
@@ -144,83 +165,75 @@ export function NotificationBell({ compact }: { compact?: boolean }) {
         {!compact && <span className="flex-1 text-left">Bildirimler</span>}
       </button>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Bildirimler"
-        sub={total > 0 ? `${total} okunmamış` : "Hepsi okundu"}
-        width={460}
-        headerRight={
-          total > 0 ? (
-            <Button variant="ghost" onClick={() => patch({ all: true })} disabled={loading}>
-              Tümünü okundu işaretle
-            </Button>
-          ) : undefined
-        }
-        footer={
-          fazlasiVar ? (
-            <Link
-              href="/bildirimler"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-brand-600 hover:text-brand-700 transition-colors"
-            >
-              Tümünü gör
-              <Icon name="forward" size={15} />
-            </Link>
-          ) : undefined
-        }
-      >
-        {/* Sekmeler */}
-        <div className="flex items-center gap-1.5 mb-4">
-          <TabButton
-            active={tab === "bildirim"}
-            count={inbox.unread}
-            onClick={() => setTab("bildirim")}
-          >
-            Bildirimler
-          </TabButton>
-          <TabButton
-            active={tab === "guncelleme"}
-            count={inbox.unreadAnnouncements}
-            onClick={() => setTab("guncelleme")}
-          >
-            Güncellemeler
-          </TabButton>
-        </div>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Bildirimler"
+          className="absolute right-0 top-full mt-2.5 w-[400px] max-w-[calc(100vw-24px)] rounded-[18px] bg-card border border-line shadow-pop z-50 fade-in origin-top-right"
+        >
+          {/* Zile bakan küçük ok */}
+          <span aria-hidden className="absolute -top-[7px] right-[13px] w-3 h-3 rotate-45 bg-card border-l border-t border-line" />
 
-        {tab === "bildirim" ? (
-          inbox.notifications.length === 0 ? (
-            <Empty
-              title="Henüz bildirim yok"
-              sub="Ödeme, hesap ve talep hareketlerin burada görünecek."
-              icon={<Icon name="bell" />}
-            />
-          ) : (
-            <div className="space-y-1.5">
-              {gosterilenBildirimler.map((n) => (
-                <NotificationItem key={n.id} n={n} onOpen={() => openItem(n)} />
-              ))}
+          <div className="relative px-4 pt-3.5 pb-3 flex items-center gap-3 border-b border-line">
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-ink-900 leading-tight">Bildirimler</p>
+              <p className="text-[11.5px] text-ink-400 mt-0.5">{total > 0 ? `${total} okunmamış` : "Hepsi okundu"}</p>
             </div>
-          )
-        ) : inbox.announcements.length === 0 ? (
-          <Empty
-            title="Henüz güncelleme yok"
-            sub="M4NM Pulse'a eklenen yenilikler burada duyurulur."
-            icon={<Icon name="alert" />}
-          />
-        ) : (
-          <div className="space-y-1.5">
-            {gosterilenDuyurular.map((a) => (
-              <AnnouncementItem
-                key={a.id}
-                a={a}
-                onRead={() => !a.readAt && patch({ id: a.id, kind: "announcement" })}
-              />
-            ))}
+            {total > 0 && (
+              <button type="button" onClick={() => patch({ all: true })} disabled={loading}
+                className="text-[12px] font-semibold text-brand-700 hover:underline disabled:opacity-50 shrink-0">
+                Tümünü okundu işaretle
+              </button>
+            )}
           </div>
-        )}
-      </Modal>
-    </>
+
+          <div className="px-3 pt-3 flex items-center gap-1.5">
+            <TabButton active={tab === "bildirim"} count={inbox.unread} onClick={() => setTab("bildirim")}>
+              Bildirimler
+            </TabButton>
+            <TabButton active={tab === "guncelleme"} count={inbox.unreadAnnouncements} onClick={() => setTab("guncelleme")}>
+              Güncellemeler
+            </TabButton>
+          </div>
+
+          <div className="p-2.5 max-h-[min(60vh,440px)] overflow-y-auto scroll-thin">
+            {tab === "bildirim" ? (
+              inbox.notifications.length === 0 ? (
+                <Empty title="Henüz bildirim yok"
+                  sub="Ödeme, hesap ve talep hareketlerin burada görünecek."
+                  icon={<Icon name="bell" />} />
+              ) : (
+                <div className="space-y-1">
+                  {gosterilenBildirimler.map((n) => (
+                    <NotificationItem key={n.id} n={n} onOpen={() => openItem(n)} />
+                  ))}
+                </div>
+              )
+            ) : inbox.announcements.length === 0 ? (
+              <Empty title="Henüz güncelleme yok"
+                sub="M4NM Pulse'a eklenen yenilikler burada duyurulur."
+                icon={<Icon name="alert" />} />
+            ) : (
+              <div className="space-y-1">
+                {gosterilenDuyurular.map((a) => (
+                  <AnnouncementItem key={a.id} a={a}
+                    onRead={() => !a.readAt && patch({ id: a.id, kind: "announcement" })} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Link
+            href="/bildirimler"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-center gap-1.5 border-t border-line px-4 py-3 text-[13px] font-medium text-brand-600 hover:text-brand-700 hover:bg-ink-900/[0.02] rounded-b-[18px] transition-colors"
+          >
+            {fazlasiVar ? "Tümünü gör" : "Bildirim sayfasını aç"}
+            <Icon name="forward" size={15} />
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 

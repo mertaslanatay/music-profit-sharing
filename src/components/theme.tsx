@@ -48,11 +48,13 @@ const Moon = () => (
 );
 
 /** Açık / koyu tema seçici — iki seçenekli hap. */
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className, size = "md" }: { className?: string; size?: "md" | "sm" }) {
   const [theme, setTheme] = useTheme();
+  // sm: sağ üstteki araç çubuğunda — komşu düğmelerle aynı 40 px yükseklik.
   const seg = (on: boolean) =>
     clsx(
-      "w-[38px] h-[38px] rounded-full grid place-items-center transition-colors duration-300 ease-out",
+      size === "sm" ? "w-8 h-8" : "w-[38px] h-[38px]",
+      "rounded-full grid place-items-center transition-colors duration-300 ease-out",
       on ? "bg-brand-500 text-white" : "text-ink-400 hover:text-ink-900"
     );
   return (

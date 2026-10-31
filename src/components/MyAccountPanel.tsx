@@ -1,5 +1,7 @@
 "use client";
 
+import { ThemeToggle } from "./theme";
+
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import type { BankAccount, BankChangeRequestRow, LedgerSummary, PaymentRow, PeriodStatus } from "@/lib/payments";
@@ -99,11 +101,14 @@ export function MyAccountPanel({
       </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3">
+        <header className="relative z-30 bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3">
           <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
           <div className="min-w-0">
             <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
             <p className="text-[12.5px] text-ink-400 leading-tight mt-0.5 hidden sm:block truncate">{meta.sub}</p>
+          </div>
+          <div className="ml-auto shrink-0">
+            <ThemeToggle size="sm" />
           </div>
         </header>
 

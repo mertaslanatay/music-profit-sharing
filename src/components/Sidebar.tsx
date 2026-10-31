@@ -4,7 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { Icon } from "./ui";
 import { LogoutButton } from "./auth/LogoutButton";
-import { Logo, ThemeToggle } from "./theme";
+import { Logo } from "./theme";
 
 export type ViewKey =
   | "overview"
@@ -35,6 +35,8 @@ export interface ViewerBadge {
   email: string;
   role: "admin" | "label_manager" | "artist" | "accountant";
   isAdmin: boolean;
+  /** Sanatçı rolünde hesaba bağlı sanatçı kimlikleri (artists.id). */
+  artistIds?: string[];
 }
 
 const ROLE_TR: Record<ViewerBadge["role"], string> = {
@@ -52,6 +54,7 @@ export function Sidebar({
   viewer,
   counts,
   hidden,
+  labels,
   preview = false,
 }: {
   view: ViewKey;
@@ -66,6 +69,8 @@ export function Sidebar({
   counts?: Partial<Record<ViewKey, number>>;
   /** Bu kullanıcıya anlamsız olan ekranlar (ör. tek sanatçılık hesapta Sanatçılar). */
   hidden?: ViewKey[];
+  /** Rol bazlı menü adı (ör. sanatçıda "Sanatçılar" → "Sanatçı profillerim"). */
+  labels?: Partial<Record<ViewKey, string>>;
   /**
    * Yönetici bir sanatçının gözünden bakıyor. Bildirim/İletişim gibi GERÇEK
    * oturuma ait (yöneticinin kendi) verileri gösteren bağlantılar gizlenir.
@@ -112,7 +117,7 @@ export function Sidebar({
                 aria-current={active ? "page" : undefined}
               >
                 <Icon name={item.icon} size={18} strokeWidth={1.75} className={active ? "text-brand-700" : undefined} />
-                <span className="flex-1 text-left">{item.label}</span>
+                <span className="flex-1 text-left">{labels?.[item.key] ?? item.label}</span>
                 {counts?.[item.key] != null && (
                   <span
                     className={clsx(
@@ -131,10 +136,6 @@ export function Sidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
-        <div className="px-1 pb-2 flex items-center justify-between">
-          <span className="eyebrow pl-2">Tema</span>
-          <ThemeToggle />
-        </div>
         {/* Yönetim yalnızca yöneticide görünür. Bu bir kolaylık; asıl engel
             sunucu tarafındaki yetki denetimidir. */}
         {(!viewer || viewer.isAdmin) && (

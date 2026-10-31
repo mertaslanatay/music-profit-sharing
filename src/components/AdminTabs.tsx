@@ -15,6 +15,7 @@ import { SupportPanel } from "./SupportPanel";
 import { AdminMailPanel } from "./AdminMailPanel";
 import { AdminProfilePanel } from "./AdminProfilePanel";
 import { NotificationBell } from "./NotificationBell";
+import { ThemeToggle } from "./theme";
 import { AdminSidebar, type AdminTabDef } from "./AdminSidebar";
 import type { ViewerBadge } from "./Sidebar";
 import type { Separator } from "@/lib/types";
@@ -113,7 +114,7 @@ export function AdminTabs({
       </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3 sm:gap-4">
+        <header className="relative z-30 bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 shrink-0 no-print flex items-center gap-3 sm:gap-4">
           <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
           <div className="min-w-0">
             <h1 className="font-display text-[20px] font-bold tracking-[-0.025em] text-ink-900 leading-tight">{meta.title}</h1>
@@ -121,7 +122,10 @@ export function AdminTabs({
           </div>
           {/* Zil artık kenar çubuğunda değil, sağ üstte — ana paneldeki
               yerleşimle aynı olsun diye. */}
-          {viewer && <div className="ml-auto shrink-0"><NotificationBell compact /></div>}
+          <div className="ml-auto shrink-0 flex items-center gap-2 sm:gap-2.5">
+            <ThemeToggle size="sm" />
+            {viewer && <NotificationBell compact />}
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 py-5 sm:py-6">
