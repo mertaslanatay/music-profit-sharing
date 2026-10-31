@@ -93,8 +93,9 @@ async function dataVersion(): Promise<string | null> {
  * tarihleri bu yüzden canlıda "—" göründü. Result'ın şekli her değiştiğinde
  * bu değeri artır: eski kayıtlar kendiliğinden ıskalanır.
  * y2 (faz-z5): kısıtlı kullanıcıda salesClasses artık dolu.
+ * y3 (faz-z8): quantity = müzik platformları; videoUses ayrı.
  */
-export const RESULT_SHAPE = "y2";
+export const RESULT_SHAPE = "y3";
 
 export function scopeKey(scope: Scope): string {
   const a = scope.access;

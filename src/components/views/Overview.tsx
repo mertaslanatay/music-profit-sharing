@@ -11,6 +11,7 @@ import { Avatar, Card, CardHead, Icon, RankRow } from "../ui";
 
 const shortLabel = (s: string) => (s.length > 16 ? s.slice(0, 15) + "…" : s);
 import { AreaTrend, CHART_COLORS, Donut, HBar } from "../charts";
+import { isUgcRetailer } from "@/lib/ugc";
 
 /**
  * Panel — Ledger yerleşimi.
@@ -63,7 +64,12 @@ export function Overview({
   // --- mecralar
   const retTotal = Object.values(res.retailers).reduce((a, v) => a + v, 0) || 1;
   const platforms = topN(res.retailers, 7).map((p) => ({ ...p, share: p.value / retTotal }));
-  const rpm = t.quantity > 0 ? money((t.gross / t.quantity) * 1000) : "—";
+  // 1.000 dinlenme başına gelir — pay ve payda AYNI tanımla: yalnızca müzik
+  // platformları (video platformlarının geliri de adedi de dışarıda).
+  const videoGross = Object.entries(res.retailers).reduce((a, [k, v]) => (isUgcRetailer(k) ? a + v : a), 0);
+  const rpm = t.quantity > 0 ? money(((t.gross - videoGross) / t.quantity) * 1000) : "—";
+  const videoUses = t.videoUses ?? 0;
+  const shortCount = (v: number) => compact(v).replace("$", "");
 
   // --- gelir türleri (satış sınıflandırması)
   const salesAll = topN(res.salesClasses, 50);
@@ -193,7 +199,9 @@ export function Overview({
           }
         />
         <Kpi delay={150} dot="bg-accent-sun" label="Toplam dinlenme" value={num(t.quantity)}
-          sub={`${num(t.retailerCount)} platform · ${num(t.territoryCount)} ülke`}
+          sub={videoUses > 0
+            ? `Müzik platformları · ayrıca ${shortCount(videoUses)} video kullanımı`
+            : `${num(t.retailerCount)} platform · ${num(t.territoryCount)} ülke`}
           below={
             <div className="flex gap-[3px] h-1.5">
               {platformData.map((p, i) => (
@@ -218,7 +226,7 @@ export function Overview({
           sub={topSong ? `${moneySmart(topSong.gross, precise)} brüt` : undefined} />
         <Insight delay={150} icon="chart" tone="sun" label="1K dinlenme başına"
           value={rpm}
-          sub="Ortalama brüt gelir" />
+          sub="Müzik platformlarında ortalama brüt gelir" />
       </section>
 
       {/* ------------------------------------------------ seyir + en çok kazananlar */}

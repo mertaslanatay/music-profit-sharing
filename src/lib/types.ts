@@ -288,7 +288,10 @@ export interface Result {
     deduction: number;
     deductionRate: number;
     netRate: number;
+    /** Müzik platformlarındaki dinlenme (TikTok/Facebook/Shorts hariç). */
     quantity: number;
+    /** TikTok, Facebook, Instagram, YouTube Shorts kullanımları — dinlenme sayılmaz. */
+    videoUses?: number;
     rowCount: number;
     artistCount: number;
     songCount: number;

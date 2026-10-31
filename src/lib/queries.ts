@@ -6,6 +6,7 @@ import { DEFAULT_SPLIT, type Separator, type SeparatorKind } from "./types";
 import { accessSql, type AccessScope } from "./access";
 import { creditsSource, realRowFilter } from "./schema";
 import { cachedByVersion, scopeKey } from "./dashboardCache";
+import { MUSIC_SQL } from "./ugc";
 import type { ArtistAgg, ArtistLabelSlice, ComboAgg, EngineConfig, LabelAgg, Result, SongAgg, Tally } from "./types";
 
 /**
@@ -308,11 +309,12 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
               sum(c.gross)::float8 included
        ${F} ${w.sql} group by r.id, r.deduction, r.gross`, w.params),
 
-    query<{ gross: number; quantity: number; artists: number; songs: number;
+    query<{ gross: number; quantity: number; video: number; artists: number; songs: number;
             labels: number; territories: number; retailers: number;
             credits: number; neg_credits: number }>(
       `select coalesce(sum(c.gross),0)::float8 gross,
-              coalesce(sum(c.quantity),0)::float8 quantity,
+              coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity,
+              coalesce(sum(c.quantity) filter (where not (${MUSIC_SQL})),0)::float8 video,
               count(distinct c.artist_id)::int artists,
               count(distinct c.song_id)::int songs,
               count(distinct c.label_id)::int labels,
@@ -332,7 +334,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
             gross: number; quantity: number; credits: number; songs: number;
             solo: number; primary_g: number; feature: number }>(
       `select a.id, a.fold_key, a.display_name, a.spellings,
-              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              sum(c.gross)::float8 gross, coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity,
               count(*)${RF}::int credits, count(distinct c.song_id)::int songs,
               sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
               sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
@@ -357,7 +359,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
     query<{ aid: string; label_name: string; gross: number; quantity: number;
             songs: number; solo: number; primary_g: number; feature: number }>(
       `select c.artist_id aid, l.name label_name,
-              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              sum(c.gross)::float8 gross, coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity,
               count(distinct c.song_id)::int songs,
               sum(case when c.total_artists = 1 then c.gross else 0 end)::float8 solo,
               sum(case when c.total_artists > 1 and c.position = 0 then c.gross else 0 end)::float8 primary_g,
@@ -386,7 +388,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
       `select c.artist_id aid, s.song_key, s.title, s.album, s.artist_string, l.name label_name,
               max(c.share)::float8 share, min(c.position)::int position,
               max(c.total_artists)::int total_artists,
-              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
+              sum(c.gross)::float8 gross, coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity
        ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id ${w.sql}
        group by c.artist_id, s.song_key, s.title, s.album, s.artist_string, l.name
        order by sum(c.gross) desc`, w.params),
@@ -396,7 +398,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
             first_sort: number | null; last_sort: number | null }>(
       `select max(s.id::text) song_id, s.song_key, s.title, s.album, s.isrc, s.artist_string,
               (array_agg(l.name order by c.gross desc))[1] label_name,
-              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              sum(c.gross)::float8 gross, coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity,
               min(pr.sort)::int first_sort, max(pr.sort)::int last_sort
        ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id
        join periods pr on pr.id = c.period_id ${w.sql}
@@ -418,7 +420,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
        group by s.song_key`, w.params),
 
     query<{ label_name: string; gross: number; quantity: number; artists: number; songs: number }>(
-      `select l.name label_name, sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+      `select l.name label_name, sum(c.gross)::float8 gross, coalesce(sum(c.quantity) filter (where ${MUSIC_SQL}),0)::float8 quantity,
               count(distinct c.artist_id)::int artists, count(distinct c.song_id)::int songs
        ${F} join labels l on l.id = c.label_id ${w.sql}
        group by l.name order by gross desc`, w.params),
@@ -631,6 +633,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
       deductionRate: gross !== 0 ? deduction / gross : 0,
       netRate,
       quantity: n(T?.quantity),
+      videoUses: n(T?.video),
       rowCount: rowCountRow[0]?.c ?? T?.credits ?? 0,
       artistCount: T?.artists ?? 0,
       songCount: T?.songs ?? 0,
@@ -705,8 +708,7 @@ async function salesClassesRestricted(
  * kullanımı olan ama neredeyse hiç dinlenmeyen şarkılarla doluyordu
  * (ör. Digital Guardrail: 5,47 Mn adet, $6,37).
  */
-export const UGC_RETAILERS = ["tiktok", "facebook", "instagram", "youtube shorts"];
-const UGC_SQL = `lower(c.retailer) not in (${UGC_RETAILERS.map((r) => `'${r}'`).join(", ")})`;
+const UGC_SQL = MUSIC_SQL;
 
 export interface SongGeo {
   songId: string;
