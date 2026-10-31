@@ -19,6 +19,11 @@ import { Songs } from "./views/Songs";
 import { Labels } from "./views/Labels";
 import { Breakdown } from "./views/Breakdown";
 import { ArtistPanel } from "./views/ArtistPanel";
+import { Artists } from "./views/Artists";
+import { Albums } from "./views/Albums";
+import { PreviewBanner, startPreview, type PreviewInfo } from "./PreviewBanner";
+import { buildAlbums } from "@/lib/catalog";
+import type { ArtistAgg } from "@/lib/types";
 
 /** Üstteki arama kutusunun gerçekten süzdüğü ekranlar. */
 const SEARCHABLE: ViewKey[] = ["payouts", "songs", "geo", "platforms"];
@@ -26,7 +31,9 @@ const SEARCHABLE: ViewKey[] = ["payouts", "songs", "geo", "platforms"];
 const TITLES: Record<ViewKey, { title: string; sub: string }> = {
   overview: { title: "Panel", sub: "Genel görünüm ve hakediş özeti" },
   payouts: { title: "Ödeme Listesi", sub: "Sanatçı bazında net hakedişler" },
+  artists: { title: "Sanatçılar", sub: "Kapsamdaki tüm sanatçılar" },
   songs: { title: "Şarkılar", sub: "Şarkı ve albüm bazında gelir" },
+  albums: { title: "Albümler", sub: "Albüm bazında gelir ve şarkılar" },
   labels: { title: "Label", sub: "Label bazında gelir kırılımı" },
   geo: { title: "Coğrafya", sub: "Gelirin geldiği ülkeler" },
   platforms: { title: "Platformlar", sub: "Streaming servisi kırılımı" },
@@ -42,6 +49,7 @@ export function Dashboard({
   transferReportId,
   periodIds,
   viewer = null,
+  preview = null,
 }: {
   result: Result;
   periods: PeriodRow[];
@@ -59,6 +67,8 @@ export function Dashboard({
   periodIds: string[];
   /** Oturum açık kullanıcı — auth kurulmadan önce null */
   viewer?: ViewerBadge | null;
+  /** Yönetici bir sanatçının gözünden bakıyorsa dolu (bkz. lib/viewAs.ts). */
+  preview?: PreviewInfo | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -112,6 +122,25 @@ export function Dashboard({
   const meta = TITLES[view];
   const t = result.totals;
 
+  // Sanatçılar ekranı tek sanatçılık bir hesapta anlamsız (yalnızca kendini
+  // görür) — gizlenir. Sayaçlar dönem seçimine göre değişir.
+  const albumCount = useMemo(() => buildAlbums(result).length, [result]);
+  const hidden: ViewKey[] = result.artists.length > 1 ? [] : ["artists"];
+  const counts: Partial<Record<ViewKey, number>> = {
+    artists: result.artists.length,
+    songs: result.songs.length,
+    albums: albumCount,
+  };
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const onViewAs = viewer?.isAdmin && !preview
+    ? async (a: ArtistAgg) => {
+        if (!a.id || previewBusy) return;
+        setPreviewBusy(true);
+        const err = await startPreview(a.id);
+        if (err) { setPreviewBusy(false); window.alert(err); }
+      }
+    : undefined;
+
   return (
     <main className="flex h-screen overflow-hidden">
       <NavShell open={navOpen} onClose={() => setNavOpen(false)}>
@@ -121,10 +150,14 @@ export function Dashboard({
         onReset={() => router.push("/admin")}
         hideRules
         viewer={viewer}
+        counts={counts}
+        hidden={hidden}
+        preview={!!preview}
       />
       </NavShell>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {preview && <PreviewBanner info={preview} />}
         <header className="bg-canvas/85 backdrop-blur border-b border-line px-4 sm:px-8 py-3 sm:py-3.5 flex items-center gap-3 sm:gap-4 shrink-0 no-print">
           <MenuButton open={navOpen} onClick={() => setNavOpen(true)} />
           <div className="min-w-0">
@@ -169,7 +202,7 @@ export function Dashboard({
             {/* Bildirim zili artık kenar çubuğunda değil, birincil eylemin
                 (Excel indir) hemen solunda — kullanıcı bakışının zaten
                 düştüğü yer burası. Birincil eylem en sağda kalıyor. */}
-            {viewer && <NotificationBell compact />}
+            {viewer && !preview && <NotificationBell compact />}
 
             <Button
               onClick={() => {
@@ -291,6 +324,13 @@ export function Dashboard({
                 onChanged={() => router.refresh()}
               />
             )}
+            {view === "artists" && (
+              <Artists res={result} periods={periods} precise={precise}
+                onArtist={(k) => onArtist(k)} onViewAs={onViewAs} />
+            )}
+            {view === "albums" && (
+              <Albums res={result} periods={periods} precise={precise} onArtist={(k) => onArtist(k)} />
+            )}
             {view === "labels" && <Labels res={result} precise={precise} onArtist={onArtist} />}
             {view === "geo" && <Breakdown res={result} precise={precise} query={query} mode="geo" />}
             {view === "platforms" && <Breakdown res={result} precise={precise} query={query} mode="platform" />}
@@ -311,6 +351,7 @@ export function Dashboard({
           res={result}
           precise={precise}
           labelScope={artistLabel}
+          onViewAs={onViewAs && artist.id ? () => onViewAs(artist) : undefined}
           onClose={() => {
             setArtistKey(null);
             setArtistLabel(null);

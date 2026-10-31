@@ -14,6 +14,7 @@ export function ArtistPanel({
   precise,
   labelScope,
   onClose,
+  onViewAs,
 }: {
   artist: ArtistAgg;
   res: Result;
@@ -21,6 +22,8 @@ export function ArtistPanel({
   /** Verilmişse, gösterilen tüm rakamlar yalnızca bu label'dan gelen payı yansıtır. */
   labelScope?: string | null;
   onClose: () => void;
+  /** Yalnızca yöneticide — paneli bu sanatçının gözünden açar. */
+  onViewAs?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const t = res.totals;
@@ -82,6 +85,16 @@ export function ArtistPanel({
                 : <> · {pct(t.gross ? artist.gross / t.gross : 0)} pay</>}
             </p>
           </div>
+          {onViewAs && (
+            <button
+              type="button"
+              onClick={onViewAs}
+              title="Bu sanatçının panelini onun gözünden gör"
+              className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-semibold border border-line text-ink-800 hover:bg-brand-500 hover:text-white hover:border-brand-500 transition-colors"
+            >
+              <Icon name="eye" size={14} /> Gözünden gör
+            </button>
+          )}
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-lg hover:bg-ink-900/[0.06] flex items-center justify-center text-ink-500 transition-colors shrink-0"

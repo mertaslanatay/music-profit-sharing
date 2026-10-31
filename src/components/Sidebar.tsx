@@ -9,7 +9,9 @@ import { Logo, ThemeToggle } from "./theme";
 export type ViewKey =
   | "overview"
   | "payouts"
+  | "artists"
   | "songs"
+  | "albums"
   | "labels"
   | "geo"
   | "platforms"
@@ -18,10 +20,12 @@ export type ViewKey =
 export const NAV: { key: ViewKey; label: string; icon: string; group: string }[] = [
   { key: "overview", label: "Panel", icon: "dashboard", group: "Analiz" },
   { key: "payouts", label: "Ödeme Listesi", icon: "wallet", group: "Analiz" },
-  { key: "songs", label: "Şarkılar", icon: "music", group: "Analiz" },
-  { key: "labels", label: "Label", icon: "disc", group: "Analiz" },
-  { key: "geo", label: "Coğrafya", icon: "globe", group: "Analiz" },
-  { key: "platforms", label: "Platformlar", icon: "radio", group: "Analiz" },
+  { key: "artists", label: "Sanatçılar", icon: "users", group: "Katalog" },
+  { key: "songs", label: "Şarkılar", icon: "music", group: "Katalog" },
+  { key: "albums", label: "Albümler", icon: "album", group: "Katalog" },
+  { key: "labels", label: "Label", icon: "disc", group: "Katalog" },
+  { key: "geo", label: "Coğrafya", icon: "globe", group: "Dağılım" },
+  { key: "platforms", label: "Platformlar", icon: "radio", group: "Dağılım" },
   { key: "rules", label: "Kurallar", icon: "sliders", group: "Ayarlar" },
 ];
 
@@ -46,6 +50,9 @@ export function Sidebar({
   onReset,
   hideRules,
   viewer,
+  counts,
+  hidden,
+  preview = false,
 }: {
   view: ViewKey;
   onView: (v: ViewKey) => void;
@@ -55,8 +62,17 @@ export function Sidebar({
   hideRules?: boolean;
   /** Oturum açık kullanıcı — auth kurulmadan önce null */
   viewer?: ViewerBadge | null;
+  /** Menü öğesinin yanında gösterilen toplam (ör. Sanatçılar 101). */
+  counts?: Partial<Record<ViewKey, number>>;
+  /** Bu kullanıcıya anlamsız olan ekranlar (ör. tek sanatçılık hesapta Sanatçılar). */
+  hidden?: ViewKey[];
+  /**
+   * Yönetici bir sanatçının gözünden bakıyor. Bildirim/İletişim gibi GERÇEK
+   * oturuma ait (yöneticinin kendi) verileri gösteren bağlantılar gizlenir.
+   */
+  preview?: boolean;
 }) {
-  const items = hideRules ? NAV.filter((i) => i.key !== "rules") : NAV;
+  const items = NAV.filter((i) => !(hideRules && i.key === "rules") && !hidden?.includes(i.key));
   let lastGroup = "";
   return (
     <aside className="w-[240px] shrink-0 bg-side border-r border-line flex flex-col h-full no-print">
@@ -97,6 +113,17 @@ export function Sidebar({
               >
                 <Icon name={item.icon} size={18} strokeWidth={1.75} className={active ? "text-brand-700" : undefined} />
                 <span className="flex-1 text-left">{item.label}</span>
+                {counts?.[item.key] != null && (
+                  <span
+                    className={clsx(
+                      "min-w-[28px] h-[22px] px-1.5 rounded-full text-[11.5px] font-semibold tabular grid place-items-center",
+                      active ? "bg-brand-500 text-white" : "bg-ink-900/[0.06] text-ink-500"
+                    )}
+                    aria-label={`toplam ${counts[item.key]}`}
+                  >
+                    {counts[item.key]!.toLocaleString("tr-TR")}
+                  </span>
+                )}
               </button>
             </div>
           );
@@ -125,7 +152,7 @@ export function Sidebar({
         {/* Adminlerde bu link gösterilmez — yönetim panelinde zaten aynı
             konuşmalara "Mesajlar" sekmesinden, üstelik hepsine birden,
             ulaşılıyor. Burada tekrar göstermek kafa karıştırır. */}
-        {viewer && !viewer.isAdmin && (
+        {viewer && !viewer.isAdmin && !preview && (
           <Link
             href="/destek"
             className="w-full flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[14px] font-medium text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-900 transition-colors"

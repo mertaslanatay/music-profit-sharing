@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
+import { resolveViewAs } from "@/lib/viewAs";
+import { PreviewBanner } from "@/components/PreviewBanner";
 import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
@@ -58,17 +60,23 @@ async function Dash({
   // --- kim bakıyor -------------------------------------------------------
   // Auth kurulmadan önce (yerel geliştirme) kısıt yoktur; kurulduğu anda
   // her sorgu kullanıcının kapsamıyla süzülür.
-  const { viewer, reason } = authConfigured()
+  const { viewer: realViewer, reason } = authConfigured()
     ? await getSession()
     : { viewer: null, reason: null as null };
   if (authConfigured()) {
-    if (!viewer && reason === "no-session") redirect("/giris");
-    if (!viewer) redirect("/beklemede");
-    if (needsMfaVerification(viewer)) redirect("/guvenlik");
+    if (!realViewer && reason === "no-session") redirect("/giris");
+    if (!realViewer) redirect("/beklemede");
+    if (needsMfaVerification(realViewer)) redirect("/guvenlik");
   }
+
+  // Yönetici "Gözünden gör" ile bir sanatçının ekranına bakıyorsa, kapsam ve
+  // rozet o sanatçının yetkileriyle hesaplanır. Gerçek yönetici değilse
+  // resolveViewAs her zaman null döner (çerez tek başına yetki vermez).
+  const preview = await resolveViewAs(realViewer);
+  const viewer = preview?.viewer ?? realViewer;
   const access = authConfigured() ? scopeFor(viewer) : undefined;
 
-  const VIEWS: ViewKey[] = ["overview", "payouts", "songs", "labels", "geo", "platforms"];
+  const VIEWS: ViewKey[] = ["overview", "payouts", "artists", "songs", "albums", "labels", "geo", "platforms"];
   const rawView = str("v");
   const view: ViewKey = VIEWS.includes(rawView as ViewKey) ? (rawView as ViewKey) : "overview";
 
@@ -79,7 +87,26 @@ async function Dash({
     return <Fail message={e instanceof Error ? e.message : "Veritabanına bağlanılamadı."} />;
   }
 
-  if (periods.length === 0) return <NoData />;
+  if (periods.length === 0) {
+    // Önizlenen sanatçının hiç yayınlanmış verisi yoksa da çıkış yolu olmalı.
+    if (preview) {
+      return (
+        <main className="min-h-screen flex flex-col">
+          <PreviewBanner info={{ artistName: preview.artistName, hasAccount: preview.hasAccount, accountEmail: preview.accountEmail }} />
+          <div className="flex-1 flex items-center justify-center p-6 text-center">
+            <div className="max-w-md">
+              <h1 className="text-[20px] font-semibold text-ink-900">Bu sanatçı henüz hiçbir şey görmüyor</h1>
+              <p className="text-[13.5px] text-ink-500 mt-2 leading-relaxed">
+                {preview.artistName} için yayınlanmış bir rapor satırı yok. Sanatçı giriş yaptığında
+                &quot;Henüz yayınlanmış rapor yok&quot; ekranını görür.
+              </p>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    return <NoData />;
+  }
 
   // Ödeme Listesi tek bir ödeme partisine (rapor) bakar; diğer ekranlar
   // serbest ay/yıl seçimine. İki kapsam URL'de ayrı taşınır ki ekran
@@ -116,10 +143,12 @@ async function Dash({
 
   // Mali veri görüntüleme her zaman kaydedilir — kimin neye ne zaman
   // baktığı sonradan sorulabilmeli.
-  if (viewer) {
+  if (realViewer) {
     const meta = await requestMeta();
     void audit({
-      userId: viewer.userId, action: "view_dashboard", resource: view,
+      userId: realViewer.userId,
+      action: preview ? "view_dashboard_as" : "view_dashboard",
+      resource: preview ? `${view} · artist:${preview.artistId}` : view,
       ip: meta.ip, userAgent: meta.userAgent,
       meta: { reportId, transferReportId, periodIds, gross: Math.round(result.totals.gross * 100) / 100 },
     });
@@ -138,7 +167,12 @@ async function Dash({
         fullName: viewer.fullName,
         email: viewer.email,
         role: viewer.role,
-        isAdmin: isAdmin(viewer),
+        isAdmin: preview ? false : isAdmin(viewer),
+      } : null}
+      preview={preview ? {
+        artistName: preview.artistName,
+        hasAccount: preview.hasAccount,
+        accountEmail: preview.accountEmail,
       } : null}
     />
   );

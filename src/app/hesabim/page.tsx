@@ -7,6 +7,8 @@ import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
 import { audit } from "@/lib/access";
 import { query } from "@/lib/db";
+import { resolveViewAs } from "@/lib/viewAs";
+import { PreviewBanner } from "@/components/PreviewBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +29,12 @@ export default async function AccountPage() {
     );
   }
 
-  const { viewer, reason } = await getSession();
-  if (!viewer) redirect(reason === "no-session" ? "/giris?devam=/hesabim" : "/beklemede");
+  const { viewer: realViewer, reason } = await getSession();
+  if (!realViewer) redirect(reason === "no-session" ? "/giris?devam=/hesabim" : "/beklemede");
+
+  // Yönetici önizlemesi: sanatçının Hesabım ekranı, onun gözünden.
+  const preview = await resolveViewAs(realViewer);
+  const viewer = preview?.viewer ?? realViewer;
 
   if (viewer.artistIds.length === 0) {
     return (
@@ -69,11 +75,12 @@ export default async function AccountPage() {
 
   const meta = await requestMeta();
   void audit({
-    userId: viewer.userId, action: "view_account", resource: `artist:${artistId}`,
+    userId: realViewer.userId, action: preview ? "view_account_as" : "view_account",
+    resource: `artist:${artistId}`,
     ip: meta.ip, userAgent: meta.userAgent,
   });
 
-  return (
+  const panel = (
     <MyAccountPanel
       artistId={artistId}
       artistName={data.artistName}
@@ -84,6 +91,19 @@ export default async function AccountPage() {
       bank={data.bank}
       openBankRequest={data.openBankRequest}
     />
+  );
+
+  if (!preview) return panel;
+  return (
+    // Panel kendi başına h-screen; şerit üstte yer kaplasın diye panel kalan
+    // yüksekliğe sığdırılıyor (aksi hâlde sayfa şerit kadar taşar).
+    <div className="h-screen flex flex-col">
+      <PreviewBanner
+        exitTo="/?v=artists"
+        info={{ artistName: preview.artistName, hasAccount: preview.hasAccount, accountEmail: preview.accountEmail }}
+      />
+      <div className="flex-1 min-h-0 [&>main]:h-full">{panel}</div>
+    </div>
   );
 }
 

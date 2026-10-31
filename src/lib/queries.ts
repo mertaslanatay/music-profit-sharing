@@ -391,11 +391,14 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
        order by sum(c.gross) desc`, w.params),
 
     query<{ song_id: string; song_key: string; title: string; album: string; isrc: string;
-            artist_string: string; label_name: string; gross: number; quantity: number }>(
+            artist_string: string; label_name: string; gross: number; quantity: number;
+            first_sort: number | null; last_sort: number | null }>(
       `select max(s.id::text) song_id, s.song_key, s.title, s.album, s.isrc, s.artist_string,
               (array_agg(l.name order by c.gross desc))[1] label_name,
-              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity
-       ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id ${w.sql}
+              sum(c.gross)::float8 gross, sum(c.quantity)::float8 quantity,
+              min(pr.sort)::int first_sort, max(pr.sort)::int last_sort
+       ${F} join songs s on s.id = c.song_id join labels l on l.id = c.label_id
+       join periods pr on pr.id = c.period_id ${w.sql}
        group by s.song_key, s.title, s.album, s.isrc, s.artist_string
        order by gross desc`, w.params),
 
@@ -464,6 +467,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
   const artists: ArtistAgg[] = aRows.map((r) => {
     const a: ArtistAgg = {
       key: r.fold_key,
+      id: r.id,
       name: r.display_name,
       spellings: r.spellings ?? [],
       gross: n(r.gross),
@@ -565,6 +569,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
       artists: songArtists.get(r.song_key) ?? [],
       gross: n(r.gross), quantity: n(r.quantity),
       territories: top?.t ?? {}, retailers: top?.r ?? {},
+      firstSort: r.first_sort ?? undefined, lastSort: r.last_sort ?? undefined,
     };
   });
 

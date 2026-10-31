@@ -161,6 +161,8 @@ export interface ArtistCredit {
 
 export interface ArtistAgg {
   key: string;
+  /** artists.id — yalnızca veritabanı yolunda dolu (önizleme modu için gerekli). */
+  id?: string;
   name: string;
   /** bu kanonik sanatçı için görülen tüm orijinal yazımlar */
   spellings: string[];
@@ -230,6 +232,13 @@ export interface SongAgg {
   quantity: number;
   territories: Tally;
   retailers: Tally;
+  /**
+   * Şarkının kapsamdaki İLK ve SON gelir döneminin periods.sort değeri.
+   * Veride gerçek yayın tarihi yok; "tarihe göre sıralama" bunu kullanır.
+   * Yalnızca veritabanı yolunda dolu.
+   */
+  firstSort?: number;
+  lastSort?: number;
 }
 
 export interface LabelAgg {

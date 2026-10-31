@@ -26,7 +26,31 @@ const isPublic = (p: string) =>
   p.startsWith("/api/auth") ||
   /\.(png|jpg|svg|ico|webp|txt|xml)$/.test(p);
 
+/** Önizleme çerezi — src/lib/viewAs.ts ile aynı ad (Edge'de o dosya içe aktarılamaz: db bağımlılığı). */
+const VIEW_AS_COOKIE = "pulse_view_as";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 export async function middleware(req: NextRequest) {
+  // Sanatçı gözüyle önizleme açıkken HİÇBİR yazma isteği geçmez. Yönetici
+  // önizlemedeyken arayüzdeki bir düğme (ödeme talebi, banka bilgisi…)
+  // gerçek yönetici oturumuyla çalışırdı — bu kapı onu engeller. Muaf olanlar:
+  // önizlemeyi başlatıp bitiren rota ve çıkış/oturum rotaları.
+  {
+    const p = req.nextUrl.pathname;
+    if (
+      req.cookies.get(VIEW_AS_COOKIE) &&
+      p.startsWith("/api/") &&
+      !SAFE_METHODS.has(req.method) &&
+      p !== "/api/admin/view-as" &&
+      !p.startsWith("/api/auth")
+    ) {
+      return NextResponse.json(
+        { error: "Sanatçı önizlemesi açık — önizlemede işlem yapılamaz. Önce önizlemeden çık." },
+        { status: 403 }
+      );
+    }
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
