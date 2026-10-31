@@ -151,7 +151,7 @@ export function Dashboard({
   const hidden: ViewKey[] = artistMode
     ? (catalogRes.artists.length > 0 ? [] : ["artists"])
     : (result.artists.length > 1 ? [] : ["artists"]);
-  const navLabels: Partial<Record<ViewKey, string>> = artistMode ? { artists: "Sanatçı profillerim" } : {};
+  const navLabels: Partial<Record<ViewKey, string>> = artistMode ? { artists: "Profillerim" } : {};
   const counts: Partial<Record<ViewKey, number>> = {
     artists: catalogRes.artists.length,
     songs: result.songs.length,

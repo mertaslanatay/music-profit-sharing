@@ -117,7 +117,7 @@ export function Sidebar({
                 aria-current={active ? "page" : undefined}
               >
                 <Icon name={item.icon} size={18} strokeWidth={1.75} className={active ? "text-brand-700" : undefined} />
-                <span className="flex-1 text-left">{labels?.[item.key] ?? item.label}</span>
+                <span className="flex-1 min-w-0 text-left truncate">{labels?.[item.key] ?? item.label}</span>
                 {counts?.[item.key] != null && (
                   <span
                     className={clsx(
