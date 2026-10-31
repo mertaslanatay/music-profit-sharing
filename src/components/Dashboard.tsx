@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Result } from "@/lib/types";
-import type { PeriodRow, ReportRow } from "@/lib/queries";
+import type { PeriodRow, ReportRow, SongGeo } from "@/lib/queries";
 import { NotificationBell } from "./NotificationBell";
 import { MenuButton, NavShell } from "./MobileNav";
 import { exportWorkbook } from "@/lib/export";
@@ -59,6 +59,7 @@ export function Dashboard({
   viewer = null,
   preview = null,
   pendingPay = null,
+  songsGeo = null,
 }: {
   result: Result;
   periods: PeriodRow[];
@@ -80,6 +81,8 @@ export function Dashboard({
   preview?: PreviewInfo | null;
   /** Panel'deki "Bekleyen ödeme" — henüz ödenmemiş net hakediş, tüm dönemler. */
   pendingPay?: { amount: number; who: "all" | "artist" } | null;
+  /** Coğrafya ekranındaki "en çok dinlenen 10 şarkı" kartı. */
+  songsGeo?: SongGeo[] | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -384,7 +387,10 @@ export function Dashboard({
                 openableArtistKeys={artistMode ? new Set(catalogRes.artists.map((a) => a.key)) : undefined} />
             )}
             {view === "labels" && <Labels res={result} precise={precise} onArtist={onArtist} />}
-            {view === "geo" && <Breakdown res={result} precise={precise} query={query} mode="geo" />}
+            {view === "geo" && (
+              <Breakdown res={result} precise={precise} query={query} mode="geo"
+                songsGeo={songsGeo} ownSongs={viewer?.role === "artist"} />
+            )}
             {view === "platforms" && <Breakdown res={result} precise={precise} query={query} mode="platform" />}
           </div>
 

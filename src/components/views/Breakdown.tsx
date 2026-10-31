@@ -7,6 +7,8 @@ import { money, moneySmart, num, pct } from "@/lib/format";
 import { countryTr, flagOf } from "@/lib/flags";
 import { Bar, Card, CardHead, Empty, Stat } from "../ui";
 import { CHART_COLORS, Donut, HBar } from "../charts";
+import type { SongGeo } from "@/lib/queries";
+import { SongGeoCard } from "./SongGeoCard";
 
 /**
  * Ülke ve platform ekranları aynı yapıyı paylaşır: genel kırılım + sanatçı seçimiyle
@@ -17,11 +19,17 @@ export function Breakdown({
   precise,
   query,
   mode,
+  songsGeo,
+  ownSongs = false,
 }: {
   res: Result;
   precise: boolean;
   query: string;
   mode: "geo" | "platform";
+  /** Coğrafya: en çok dinlenen 10 şarkı ve ülkeleri (sunucudan). */
+  songsGeo?: SongGeo[] | null;
+  /** Sanatçı hesabı: başlık "şarkın" olur. */
+  ownSongs?: boolean;
 }) {
   const [artistKey, setArtistKey] = useState<string>("");
 
@@ -199,6 +207,8 @@ export function Breakdown({
           </table>
         </div>
       </Card>
+
+      {isGeo && songsGeo && <SongGeoCard songs={songsGeo} own={ownSongs} />}
     </div>
   );
 }

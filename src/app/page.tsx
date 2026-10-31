@@ -4,7 +4,7 @@ import { resolveViewAs } from "@/lib/viewAs";
 import { pendingTotal } from "@/lib/payments";
 import { redactOtherArtists } from "@/lib/redact";
 import { PreviewBanner } from "@/components/PreviewBanner";
-import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
+import { listPeriods, listReports, loadResult, topSongsGeo, type Scope, type SongGeo } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
@@ -146,13 +146,20 @@ async function Dash({
 
   let result;
   let pending: { amount: number; who: "all" | "artist" } | null = null;
+  let songsGeo: SongGeo[] | null = null;
   try {
-    const [r, p] = await Promise.all([
+    const [r, p, g] = await Promise.all([
       loadResult(scope),
       pendingWho
         ? pendingTotal(pendingWho === "all" ? null : viewer!.artistIds).catch(() => null)
         : Promise.resolve(null),
+      // Coğrafya: en çok dinlenen 10 şarkı. Sanatçı hesabında — label geneli
+      // yetkisi olsa bile — yalnızca KENDİ şarkıları.
+      view === "geo"
+        ? topSongsGeo(scope, viewer?.role === "artist" ? viewer.artistIds : null).catch(() => null)
+        : Promise.resolve(null),
     ]);
+    songsGeo = g;
     // Yönetici olmayan kimse başka bir sanatçının hakedişini görmez — label
     // toplamlarını görme yetkisi olsa bile. Süzme burada, istemciye
     // gönderilmeden önce (bkz. lib/redact.ts). Önizleme de aynı kuraldan geçer.
@@ -188,6 +195,7 @@ async function Dash({
       transferReportId={transferReportId}
       periodIds={periodIds}
       pendingPay={pending}
+      songsGeo={songsGeo}
       viewer={viewer ? {
         fullName: viewer.fullName,
         email: viewer.email,

@@ -92,8 +92,9 @@ async function dataVersion(): Promise<string | null> {
  * kayıt (yeni alanlar olmadan) sunulmaya devam ediyordu. faz-y'de albüm
  * tarihleri bu yüzden canlıda "—" göründü. Result'ın şekli her değiştiğinde
  * bu değeri artır: eski kayıtlar kendiliğinden ıskalanır.
+ * y2 (faz-z5): kısıtlı kullanıcıda salesClasses artık dolu.
  */
-export const RESULT_SHAPE = "y1";
+export const RESULT_SHAPE = "y2";
 
 export function scopeKey(scope: Scope): string {
   const a = scope.access;

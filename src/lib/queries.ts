@@ -42,23 +42,24 @@ export function isRestricted(a?: AccessScope): boolean {
   return a.denied || a.labelIds !== null || a.artistIds !== null;
 }
 
-function buildWhere(scope: Scope, alias = "c"): Where {
+/** start: aynı sorguda daha önce kullanılmış parametre sayısı ($ numaraları buradan devam eder). */
+function buildWhere(scope: Scope, alias = "c", start = 0): Where {
   const parts: string[] = [];
   const params: unknown[] = [];
   if (scope.periodIds?.length) {
     params.push(scope.periodIds);
-    parts.push(`${alias}.period_id = any($${params.length}::uuid[])`);
+    parts.push(`${alias}.period_id = any($${start + params.length}::uuid[])`);
   }
   if (scope.reportId) {
     params.push(scope.reportId);
-    parts.push(`${alias}.report_id = $${params.length}::uuid`);
+    parts.push(`${alias}.report_id = $${start + params.length}::uuid`);
   }
   if (scope.publishedOnly !== false) {
     parts.push(`r.status in ('published','locked')`);
   }
   // Yetki süzmesi EN SON eklenir; parametre numaraları mevcut sayıdan devam eder.
   if (scope.access) {
-    const a = accessSql(scope.access, params.length, alias);
+    const a = accessSql(scope.access, start + params.length, alias);
     parts.push(...a.conditions);
     params.push(...a.params);
   }
@@ -431,7 +432,7 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
        join periods p on p.id = c.period_id ${w.sql} group by p.label`, w.params),
 
     restricted
-      ? Promise.resolve([] as { k: string; v: number }[])
+      ? salesClassesRestricted(scope, F, w)
       : query<{ k: string; v: number }>(
           `select rr.sales_class k, sum(rr.net)::float8 v
            from report_rows rr join reports r on r.id = rr.report_id ${wr.sql}
@@ -639,4 +640,124 @@ async function computeResult(scope: Scope = {}): Promise<Result> {
       negativeRows: rowCountRow[0]?.neg ?? T?.neg_credits ?? 0,
     },
   };
+}
+
+
+/* ------------------------------------------------ gelir türleri (kısıtlı) */
+
+/**
+ * Yetkisi kısıtlı kullanıcı (sanatçı, label yöneticisi) için gelir türleri.
+ *
+ * Satış sınıfı yalnızca ham satırlarda (report_rows) var ve o tablo sanatçı
+ * kimliği taşımıyor — bu yüzden önceden bu kart sanatçıda hep BOŞTU. Şimdi:
+ * kullanıcının kapsamındaki her şarkının gerçek geliri (krediler, devirler
+ * dahil) o şarkının satış sınıfı karışımına göre dağıtılıyor:
+ *
+ *   değer(sınıf) = Σ_şarkı  kendi_gelir(şarkı) × net(şarkı, sınıf) / net(şarkı)
+ *
+ * Bir şarkıda sanatçının payı satırdan satıra değişmediği için (bölüşüm
+ * şarkı bazında) bu, satır satır hesaplamayla aynı sonucu verir. Şarkı
+ * ham satırlarla ISRC üzerinden eşlenir; ISRC'siz satırlar (canlıda gelirin
+ * ~%0,3'ü) "Eşleşmeyen" olarak ayrı gösterilir ki toplam tutsun.
+ */
+async function salesClassesRestricted(
+  scope: Scope, F: string, w: Where
+): Promise<{ k: string; v: number }[]> {
+  const wr = buildWhere({ ...scope, access: undefined }, "rr", w.params.length);
+  const rows = await query<{ k: string; v: number }>(
+    `with ag as (
+       select c.song_id, sum(c.gross) g ${F} ${w.sql} group by c.song_id
+     ), mix as (
+       -- ag'den başlayıp report_rows'a upper(isrc) indeksiyle (0017) iniyoruz;
+       -- tersi her seferinde ~200 bin satırı tarıyordu.
+       select s.id song_id, rr.sales_class k, sum(rr.net) v
+       from ag
+       join songs s on s.id = ag.song_id and s.song_key like 'isrc:%'
+       join report_rows rr on upper(rr.isrc) = substr(s.song_key, 6)
+         and rr.isrc is not null and rr.isrc <> ''
+       join reports r on r.id = rr.report_id
+       ${wr.sql}
+       group by s.id, rr.sales_class
+     ), tot as (
+       select song_id, sum(v) t from mix group by song_id
+     )
+     select coalesce(m.k, '—') k, sum(ag.g * m.v / t.t)::float8 v
+     from mix m
+     join tot t on t.song_id = m.song_id and t.t <> 0
+     join ag on ag.song_id = m.song_id
+     group by m.k
+     union all
+     select 'Eşleşmeyen', coalesce(sum(ag.g), 0)::float8
+     from ag where ag.song_id not in (select song_id from tot where t <> 0)`,
+    [...w.params, ...wr.params]
+  );
+  return rows.filter((r) => Math.abs(n(r.v)) > 1e-9);
+}
+
+/* ---------------------------------------------- coğrafya: ilk 10 şarkı */
+
+export interface SongGeo {
+  songId: string;
+  title: string;
+  album: string;
+  artistString: string;
+  /** Kapsamdaki toplam dinlenme (şarkının tüm sanatçıları — şarkı düzeyinde). */
+  total: number;
+  territories: { k: string; v: number }[];
+}
+
+/**
+ * En çok dinlenen 10 şarkı ve dinlendikleri ülkeler (Coğrafya ekranı).
+ *
+ * ownArtistIds verilirse (sanatçı hesabı) yalnızca o sanatçıların kredisi
+ * olan şarkılar; aksi hâlde kapsamdaki tüm şarkılar. Dinlenme şarkı
+ * düzeyinde sayılır — ortak şarkıda payla bölünmüş akış değil, şarkının
+ * gerçek dinlenmesi (kişinin hakedişi değil, bu yüzden gizlilik kuralına
+ * takılmaz).
+ */
+export async function topSongsGeo(scope: Scope, ownArtistIds: string[] | null): Promise<SongGeo[]> {
+  const key = `geo10:${scopeKey(scope)}:${ownArtistIds ? [...ownArtistIds].sort().join(",") : "*"}`;
+  return cachedByVersion(key, async () => {
+    const CSRC = await creditsSource();
+    const F = `from ${CSRC} c join reports r on r.id = c.report_id`;
+    const w = buildWhere(scope);
+    const params: unknown[] = [...w.params];
+    let own = "";
+    if (ownArtistIds) {
+      params.push(ownArtistIds);
+      own = `${w.sql ? " and" : " where"} c.artist_id = any($${params.length}::uuid[])`;
+    }
+    const ws = buildWhere({ ...scope, access: undefined }, "c", params.length);
+    params.push(...ws.params);
+    const rows = await query<{ song_id: string; title: string; album: string; artist_string: string; total: number; k: string; v: number }>(
+      `with mine as (
+         select distinct c.song_id ${F} ${w.sql}${own}
+       ), top as (
+         select c.song_id, sum(c.quantity) q ${F}
+         ${ws.sql}${ws.sql ? " and" : " where"} c.song_id in (select song_id from mine)
+         group by c.song_id order by q desc limit 10
+       )
+       select t.song_id, s.title, s.album, s.artist_string, t.q::float8 total,
+              c.territory k, sum(c.quantity)::float8 v
+       from top t
+       join songs s on s.id = t.song_id
+       join ${CSRC} c on c.song_id = t.song_id
+       join reports r on r.id = c.report_id
+       ${ws.sql ? ws.sql : "where true"}
+       group by t.song_id, s.title, s.album, s.artist_string, t.q, c.territory`,
+      params
+    );
+    const bySong = new Map<string, SongGeo>();
+    for (const r of rows) {
+      let g = bySong.get(r.song_id);
+      if (!g) {
+        g = { songId: r.song_id, title: r.title, album: r.album ?? "", artistString: r.artist_string, total: n(r.total), territories: [] };
+        bySong.set(r.song_id, g);
+      }
+      g.territories.push({ k: r.k || "—", v: n(r.v) });
+    }
+    const out = [...bySong.values()].sort((a, b) => b.total - a.total);
+    for (const g of out) g.territories.sort((a, b) => b.v - a.v);
+    return out;
+  });
 }
