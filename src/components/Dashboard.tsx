@@ -50,6 +50,7 @@ export function Dashboard({
   periodIds,
   viewer = null,
   preview = null,
+  pendingPay = null,
 }: {
   result: Result;
   periods: PeriodRow[];
@@ -69,6 +70,8 @@ export function Dashboard({
   viewer?: ViewerBadge | null;
   /** Yönetici bir sanatçının gözünden bakıyorsa dolu (bkz. lib/viewAs.ts). */
   preview?: PreviewInfo | null;
+  /** Panel'deki "Bekleyen ödeme" — henüz ödenmemiş net hakediş, tüm dönemler. */
+  pendingPay?: { amount: number; who: "all" | "artist" } | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -271,26 +274,37 @@ export function Dashboard({
               </InfoTip>
             )}
 
-            {view !== "overview" && (
-            <div className="ml-auto flex flex-wrap items-center gap-4">
-              <Field label="Brüt" value={money(t.gross, precise)} />
-              <Field label="SWIFT kesintisi" value={t.deduction ? money(t.deduction) : "—"}
-                tone={t.deduction ? "rose" : "muted"} />
-              <Field label="Kesinti oranı" value={t.deduction ? pct(t.deductionRate, 2) : "—"}
-                tone={t.deduction ? "rose" : "muted"} />
-              <div className="rounded-xl bg-brand-50 px-3.5 py-2 relative">
-                {pending && (
-                  <span className="absolute inset-0 rounded-xl bg-brand-50 flex items-center justify-center">
-                    <span className="text-[11px] text-brand-700/60">hesaplanıyor…</span>
-                  </span>
-                )}
-                <p className="text-[10.5px] font-medium text-brand-700/70 leading-tight">DAĞITILACAK NET</p>
-                <p className="font-display text-[18px] font-bold text-brand-700 tabular leading-tight mt-0.5">
-                  {money(t.received)}
-                </p>
-              </div>
+            {/* Kapsamın para özeti — seçicinin hemen yanında, çünkü bu rakamlar
+                seçilen yıl/dönemle birlikte değişir. Panel'de net büyük rakam
+                olarak aşağıda durduğu için burada tekrar edilmez. */}
+            <div className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-3">
+              <Field label="Brüt gelir" value={money(t.gross, precise)} />
+              <Field
+                label="Banka kesintisi"
+                value={t.deduction ? `−${money(t.deduction)}` : "Yok"}
+                sub={t.deduction ? `${pct(t.deductionRate, 2)} · SWIFT` : undefined}
+                tone={t.deduction ? "rose" : "muted"}
+                title="Ödeme bankaya gelirken SWIFT transferinde kesilen tutar. Sanatçılara gelirleri oranında yansıtılır."
+              />
+              {view !== "overview" && (
+                <div className="rounded-xl bg-brand-50 px-3.5 py-2 relative">
+                  {pending && (
+                    <span className="absolute inset-0 rounded-xl bg-brand-50 flex items-center justify-center">
+                      <span className="text-[11px] text-brand-700/60">hesaplanıyor…</span>
+                    </span>
+                  )}
+                  {/* "Dağıtılacak" yalnızca TEK bir ödeme partisi seçiliyken
+                      doğru: o partinin sanatçılara dağıtılacak tutarı. Diğer
+                      her kapsamda bu rakam ödenmişleri de içeren net hakediştir. */}
+                  <p className="text-[10.5px] font-medium text-brand-700/70 leading-tight uppercase tracking-wide">
+                    {isPayouts && reportId !== "all" ? "Dağıtılacak net" : "Net hakediş"}
+                  </p>
+                  <p className="font-display text-[18px] font-bold text-brand-700 tabular leading-tight mt-0.5">
+                    {money(t.received)}
+                  </p>
+                </div>
+              )}
             </div>
-            )}
           </div>
 
           {t.negativeRows > 0 && view === "overview" && (
@@ -304,7 +318,10 @@ export function Dashboard({
           )}
 
           <div className="rise" key={`${view}-${reportId}-${transferReportId}-${periodIds.join(",")}`}>
-            {view === "overview" && <Overview res={result} precise={precise} onArtist={onArtist} />}
+            {view === "overview" && (
+              <Overview res={result} precise={precise} onArtist={onArtist}
+                scopeLabel={scopeLabel} pending={pendingPay} />
+            )}
             {view === "payouts" && <Payouts res={result} precise={precise} query={query} onArtist={onArtist} />}
             {view === "songs" && (
               <Songs
@@ -362,14 +379,15 @@ export function Dashboard({
   );
 }
 
-function Field({ label, value, tone = "default" }: {
-  label: string; value: string; tone?: "default" | "rose" | "muted";
+function Field({ label, value, sub, tone = "default", title }: {
+  label: string; value: string; sub?: string; tone?: "default" | "rose" | "muted"; title?: string;
 }) {
   const color = { default: "text-ink-900", rose: "text-accent-rose", muted: "text-ink-300" }[tone];
   return (
-    <div className="hidden lg:block">
+    <div className="hidden sm:block" title={title}>
       <p className="text-[11px] font-medium text-ink-400 mb-1">{label}</p>
-      <p className={`text-[14px] font-semibold tabular ${color}`}>{value}</p>
+      <p className={`text-[14px] font-semibold tabular leading-tight ${color}`}>{value}</p>
+      {sub && <p className="text-[11px] text-ink-400 tabular mt-0.5">{sub}</p>}
     </div>
   );
 }

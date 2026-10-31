@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { Result } from "@/lib/types";
 import { compact, money, moneySmart, num, pct, periodSort, topN } from "@/lib/format";
 import { parsePeriod, periodShort } from "@/lib/period";
@@ -13,7 +14,7 @@ import { AreaTrend, CHART_COLORS, Donut, HBar } from "../charts";
 
 /**
  * Panel — Ledger yerleşimi.
- * Sıra: tek büyük rakam (dağıtılacak net) → 4 gösterge → seyir grafiği +
+ * Sıra: tek büyük rakam (net hakediş + bekleyen ödeme) → 4 gösterge → seyir grafiği +
  * en çok kazananlar → platform halkası + ödeme listesi → ayrıntı kartları.
  * Her blok AOS ile aşağıdan belirir; grafikler kendi animasyonuyla çizilir.
  */
@@ -21,10 +22,16 @@ export function Overview({
   res,
   precise,
   onArtist,
+  scopeLabel,
+  pending,
 }: {
   res: Result;
   precise: boolean;
   onArtist: (key: string) => void;
+  /** Seçili kapsamın adı — "Tüm zamanlar", "Mart 2026", "3 dönem"… */
+  scopeLabel?: string;
+  /** Henüz ödenmemiş net hakediş (tüm dönemler). Label yöneticisinde yok. */
+  pending?: { amount: number; who: "all" | "artist" } | null;
 }) {
   const t = res.totals;
 
@@ -71,9 +78,9 @@ export function Overview({
     .slice(-8)
     .reverse();
   const periodMax = Math.max(1, ...periodRows.map((p) => p.value));
-  const lastChange = periodData.length >= 2 && periodData[periodData.length - 2].value
-    ? (periodData[periodData.length - 1].value - periodData[periodData.length - 2].value) / periodData[periodData.length - 2].value
-    : null;
+  const lastP = periodData[periodData.length - 1];
+  const prevP = periodData[periodData.length - 2];
+  const lastChange = lastP && prevP?.value ? (lastP.value - prevP.value) / prevP.value : null;
   const topSong = res.songs[0];
   const topCountry = countries[0];
   const topPlatform = platforms[0];
@@ -97,31 +104,48 @@ export function Overview({
       {/* ------------------------------------------------ tek büyük rakam */}
       <section data-aos="fade-up" className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-1">
         <div className="min-w-0">
-          <p className="eyebrow">Dağıtılacak net hakediş</p>
+          {/* "Dağıtılacak" DEĞİL: bu rakam ödenmiş olanları da içerir. Asıl
+              dağıtılacak tutar sağdaki "Bekleyen ödeme". */}
+          <p className="eyebrow">
+            Net hakediş{scopeLabel ? <span className="text-ink-300"> · {scopeLabel}</span> : null}
+          </p>
           <p className="font-display font-bold tabular text-ink-900 leading-[0.95] tracking-[-0.045em] mt-3 text-[clamp(36px,5.6vw,84px)]">
             {netMain}
             <span className="text-ink-400 font-medium">{netCents}</span>
           </p>
           <p className="mt-4 flex flex-wrap items-center gap-2 text-[14.5px] text-ink-500">
-            {t.deduction !== 0 ? (
-              <span className="inline-flex items-center gap-1 h-[26px] px-2.5 rounded-full bg-accent-warn/15 text-accent-warn font-semibold text-[12.5px]">
-                −{pct(t.deductionRate, 2)} kesinti
-              </span>
-            ) : (
-              <span className="inline-flex items-center h-[26px] px-2.5 rounded-full bg-brand-500/15 text-brand-700 font-semibold text-[12.5px]">
-                kesintisiz
-              </span>
-            )}
             {lastChange !== null && (
-              <span className={`inline-flex items-center gap-1 h-[26px] px-2.5 rounded-full font-semibold text-[12.5px] ${lastChange >= 0 ? "bg-brand-500/15 text-brand-700" : "bg-accent-warn/15 text-accent-warn"}`}>
-                {lastChange >= 0 ? "↑" : "↓"} {pct(Math.abs(lastChange))} son dönem
+              <span
+                title={`${lastP.full} brüt geliri, ${prevP.full} ile karşılaştırıldı`}
+                className={`inline-flex items-center gap-1 h-[26px] px-2.5 rounded-full font-semibold text-[12.5px] ${lastChange >= 0 ? "bg-brand-500/15 text-brand-700" : "bg-accent-warn/15 text-accent-warn"}`}
+              >
+                {lastChange >= 0 ? "↑" : "↓"} {pct(Math.abs(lastChange))} önceki döneme göre
               </span>
             )}
             <span>
-              Bankaya yatan tutar üzerinden oransal dağıtıldı · {num(t.artistCount)} sanatçı · {num(t.songCount)} şarkı
+              Banka kesintisi düşüldükten sonraki tutar · {num(t.artistCount)} sanatçı · {num(t.songCount)} şarkı
             </span>
           </p>
         </div>
+
+        {pending && (
+          <div className="rounded-[20px] border border-line bg-card px-5 py-4 min-w-[220px]">
+            <p className="eyebrow">{pending.who === "artist" ? "Sana ödenecek" : "Bekleyen ödeme"}</p>
+            <p className="font-display text-[30px] font-bold tabular text-ink-900 tracking-[-0.035em] leading-tight mt-2">
+              {money(pending.amount, precise)}
+            </p>
+            <p className="text-[12.5px] text-ink-500 mt-1">
+              {pending.amount > 0.005
+                ? (pending.who === "artist" ? "Henüz ödenmemiş hakedişin · tüm dönemler" : "Henüz ödenmemiş hakediş · tüm dönemler")
+                : (pending.who === "artist" ? "Tüm hakedişlerin ödendi" : "Tüm hakedişler ödendi")}
+            </p>
+            {pending.who === "artist" && (
+              <Link href="/hesabim" className="inline-flex items-center gap-1 mt-2.5 text-[12.5px] font-semibold text-brand-700 hover:underline">
+                Ödeme geçmişi <Icon name="forward" size={13} />
+              </Link>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ------------------------------------------------ göstergeler */}
@@ -141,9 +165,9 @@ export function Overview({
             </svg>
           ) : undefined}
         />
-        <Kpi delay={50} dot="bg-accent-orange" label="SWIFT kesintisi"
+        <Kpi delay={50} dot="bg-accent-orange" label="Banka kesintisi"
           value={t.deduction ? money(t.deduction) : "—"}
-          sub={t.deduction ? `${pct(t.deductionRate, 2)} · kazanca göre paylaştırıldı` : "Bu kapsamda kesinti yok"}
+          sub={t.deduction ? `${pct(t.deductionRate, 2)} · sanatçılara gelirleri oranında yansıdı` : "Bu kapsamda kesinti yok"}
           below={
             <div className="h-1.5 rounded-full bg-ink-900/[0.07] overflow-hidden">
               <div className="h-full rounded-full bg-accent-orange grow-x"

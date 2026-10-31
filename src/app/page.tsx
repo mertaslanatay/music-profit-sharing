@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { resolveViewAs } from "@/lib/viewAs";
+import { pendingTotal } from "@/lib/payments";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
@@ -131,9 +132,28 @@ async function Dash({
     access,
   };
 
+  // "Bekleyen ödeme" — yalnızca Panel'de gösterilir. Yönetici herkesin,
+  // sanatçı (veya önizlenen sanatçı) yalnızca kendi bekleyen tutarını görür.
+  // Label yöneticisi / muhasebe için anlamlı tek bir rakam yok (bakiye
+  // sanatçı bazında, label bazında değil) — gösterilmez.
+  const pendingWho: "all" | "artist" | null =
+    view !== "overview" ? null
+      : !authConfigured() ? "all"
+      : preview || viewer?.role === "artist" ? ((viewer?.artistIds.length ?? 0) > 0 ? "artist" : null)
+      : isAdmin(viewer) ? "all"
+      : null;
+
   let result;
+  let pending: { amount: number; who: "all" | "artist" } | null = null;
   try {
-    result = await loadResult(scope);
+    const [r, p] = await Promise.all([
+      loadResult(scope),
+      pendingWho
+        ? pendingTotal(pendingWho === "all" ? null : viewer!.artistIds).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    result = r;
+    if (pendingWho && p !== null) pending = { amount: p, who: pendingWho };
   } catch (e) {
     // listPeriods/listReports gibi burası da opak "Application error" yerine
     // gerçek hatayı gösterir — aksi hâlde tek belirti bir Vercel digest'i
@@ -163,6 +183,7 @@ async function Dash({
       reportId={reportId}
       transferReportId={transferReportId}
       periodIds={periodIds}
+      pendingPay={pending}
       viewer={viewer ? {
         fullName: viewer.fullName,
         email: viewer.email,

@@ -689,3 +689,45 @@ export async function resolveBankChangeRequest(
     return { ok: true };
   });
 }
+
+/* ------------------------------------------------- panel: bekleyen ödeme */
+
+/**
+ * Henüz ödenmemiş net hakediş (tüm dönemler) — Panel'deki "Bekleyen ödeme".
+ *
+ * Ödemeler data_version'ı artırmadığı için panel önbelleğine konamaz; burada
+ * kısa (60 sn) bir süreç içi önbellek var. Fazla ödenmiş (eksi bakiyeli)
+ * sanatçılar toplamı düşürmesin diye bakiye sıfırın altına inmez.
+ *
+ * artistIds null = herkes (yönetici). Sanatçı için id başına ayrı sorgu
+ * atılıyor: `artist_id = any($1)` görünüme inmiyor ve herkesi hesaplıyor
+ * (canlıda 593 ms), `artist_id = $1` ise ~30 ms.
+ */
+const pendingCache = new Map<string, { at: number; v: number }>();
+const PENDING_TTL_MS = 60_000;
+
+export async function pendingTotal(artistIds: string[] | null): Promise<number> {
+  const key = artistIds === null ? "*" : [...artistIds].sort().join(",");
+  const hit = pendingCache.get(key);
+  if (hit && Date.now() - hit.at < PENDING_TTL_MS) return hit.v;
+
+  let v = 0;
+  if (artistIds === null) {
+    const r = await query<{ v: number }>(
+      `select coalesce(sum(greatest(balance, 0)), 0)::float8 v from v_artist_balance`
+    );
+    v = n(r[0]?.v);
+  } else {
+    const parts = await Promise.all(
+      artistIds.map((id) =>
+        query<{ v: number }>(
+          `select greatest(balance, 0)::float8 v from v_artist_balance where artist_id = $1::uuid`,
+          [id]
+        )
+      )
+    );
+    v = parts.reduce((a, r) => a + n(r[0]?.v), 0);
+  }
+  pendingCache.set(key, { at: Date.now(), v });
+  return v;
+}
