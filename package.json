@@ -22,7 +22,8 @@
     "verify:support": "tsx scripts/verify-support.mts",
     "verify:preview": "tsx scripts/verify-preview.mts",
     "verify:songscope": "tsx scripts/verify-songscope.mts",
-    "verify:ledger": "tsx scripts/verify-ledger.mts"
+    "verify:ledger": "tsx scripts/verify-ledger.mts",
+    "verify:redact": "tsx scripts/verify-redact.mts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

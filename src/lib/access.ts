@@ -114,12 +114,22 @@ export const canManagePayments = (v: Viewer | null): boolean => isAdmin(v);
 export const canExport = (v: Viewer | null): boolean =>
   !!v && v.status === "active" && v.role !== "artist";
 
-/** Bu sanatçının verisine erişebilir mi? */
+/**
+ * Bu sanatçıya ÖZEL verisine (hesap dökümü, banka bilgisi, ödeme talebi)
+ * erişebilir mi?
+ *
+ * Yönetici herkesinkine; diğer herkes YALNIZCA hesabına bağlı sanatçılarınkine.
+ * Label geneli görme yetkisi (canSeeOtherArtists) burada bilinçli olarak işe
+ * yaramaz: o yetki label TOPLAMLARINI görmek içindir, başka bir sanatçının
+ * hakedişini veya IBAN'ını değil. (Önceden scopeFor().artistIds === null
+ * olduğu için label geneli yetkili sanatçıya HER sanatçının dökümü ve banka
+ * bilgisi açılıyordu — 31 Eki 2026'da kapatıldı.)
+ */
 export function canAccessArtist(v: Viewer | null, artistId: string): boolean {
   const s = scopeFor(v);
-  if (s.denied) return false;
-  if (s.artistIds === null) return true;
-  return s.artistIds.includes(artistId);
+  if (s.denied || !v) return false;
+  if (isAdmin(v)) return true;
+  return v.artistIds.includes(artistId);
 }
 
 /* --------------------------------------------------- SQL süzme yardımcısı */

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { resolveViewAs } from "@/lib/viewAs";
 import { pendingTotal } from "@/lib/payments";
+import { redactOtherArtists } from "@/lib/redact";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { listPeriods, listReports, loadResult, type Scope } from "@/lib/queries";
 import type { ViewKey } from "@/components/Sidebar";
@@ -152,7 +153,10 @@ async function Dash({
         ? pendingTotal(pendingWho === "all" ? null : viewer!.artistIds).catch(() => null)
         : Promise.resolve(null),
     ]);
-    result = r;
+    // Yönetici olmayan kimse başka bir sanatçının hakedişini görmez — label
+    // toplamlarını görme yetkisi olsa bile. Süzme burada, istemciye
+    // gönderilmeden önce (bkz. lib/redact.ts). Önizleme de aynı kuraldan geçer.
+    result = viewer && !isAdmin(viewer) ? redactOtherArtists(r, viewer.artistIds) : r;
     if (pendingWho && p !== null) pending = { amount: p, who: pendingWho };
   } catch (e) {
     // listPeriods/listReports gibi burası da opak "Application error" yerine

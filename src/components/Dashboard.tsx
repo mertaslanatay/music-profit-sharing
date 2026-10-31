@@ -148,9 +148,15 @@ export function Dashboard({
     () => (artistMode ? { ...result, artists: result.artists.filter((a) => a.id && ownIds.has(a.id)) } : result),
     [artistMode, result, ownIds]
   );
+  // Sunucu, yönetici olmayana yalnızca kendi sanatçı satırlarını gönderiyor
+  // (lib/redact.ts). Kendi sanatçısı olmayan bir label yöneticisinde Ödeme
+  // Listesi ve Sanatçılar boş kalacağı için menüden kalkar.
+  const nonAdmin = !!viewer && !viewer.isAdmin;
   const hidden: ViewKey[] = artistMode
     ? (catalogRes.artists.length > 0 ? [] : ["artists"])
-    : (result.artists.length > 1 ? [] : ["artists"]);
+    : nonAdmin
+      ? (result.artists.length > 0 ? ["artists"] : ["artists", "payouts"])
+      : (result.artists.length > 1 ? [] : ["artists"]);
   const navLabels: Partial<Record<ViewKey, string>> = artistMode ? { artists: "Profillerim" } : {};
   const counts: Partial<Record<ViewKey, number>> = {
     artists: catalogRes.artists.length,
