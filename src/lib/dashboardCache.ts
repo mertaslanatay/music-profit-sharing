@@ -86,9 +86,19 @@ async function dataVersion(): Promise<string | null> {
  * ayrı tutulur — access verilmemesi "kısıt yok" demektir ve bu, boş diziyle
  * ("hiçbir şey görme") ASLA aynı anahtara düşmemelidir.
  */
+/**
+ * Result'ın YAPI sürümü. Önbellek veri sürümüne (data_version) göre geçersiz
+ * olur — ama kod Result'a yeni alan eklediğinde veri değişmediği için eski
+ * kayıt (yeni alanlar olmadan) sunulmaya devam ediyordu. faz-y'de albüm
+ * tarihleri bu yüzden canlıda "—" göründü. Result'ın şekli her değiştiğinde
+ * bu değeri artır: eski kayıtlar kendiliğinden ıskalanır.
+ */
+export const RESULT_SHAPE = "y1";
+
 export function scopeKey(scope: Scope): string {
   const a = scope.access;
   return JSON.stringify({
+    shape: RESULT_SHAPE,
     p: scope.periodIds ? [...scope.periodIds].sort() : null,
     r: scope.reportId ?? null,
     pub: scope.publishedOnly ?? null,
