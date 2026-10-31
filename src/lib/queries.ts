@@ -696,6 +696,18 @@ async function salesClassesRestricted(
 
 /* ---------------------------------------------- coğrafya: ilk 10 şarkı */
 
+/**
+ * Kısa video / sosyal platformlar — raporlardaki "adet", sesin videolarda
+ * kaç kez oynatıldığı (kullanım), şarkının dinlenmesi DEĞİL. Canlı veride
+ * (31 Eki 2026): TikTok + Facebook + YouTube Shorts tüm "adet"in %52'si, gelirin
+ * %1,1'i; 1.000 adet başına ~$0,005 (Spotify $0,49, Apple $1,60). "En çok
+ * dinlenen" sıralaması bunları saymaz — yoksa ilk sıralar milyonlarca TikTok
+ * kullanımı olan ama neredeyse hiç dinlenmeyen şarkılarla doluyordu
+ * (ör. Digital Guardrail: 5,47 Mn adet, $6,37).
+ */
+export const UGC_RETAILERS = ["tiktok", "facebook", "instagram", "youtube shorts"];
+const UGC_SQL = `lower(c.retailer) not in (${UGC_RETAILERS.map((r) => `'${r}'`).join(", ")})`;
+
 export interface SongGeo {
   songId: string;
   title: string;
@@ -715,8 +727,11 @@ export interface SongGeo {
  * gerçek dinlenmesi (kişinin hakedişi değil, bu yüzden gizlilik kuralına
  * takılmaz).
  */
-export async function topSongsGeo(scope: Scope, ownArtistIds: string[] | null): Promise<SongGeo[]> {
-  const key = `geo10:${scopeKey(scope)}:${ownArtistIds ? [...ownArtistIds].sort().join(",") : "*"}`;
+export async function topSongsGeo(
+  scope: Scope, ownArtistIds: string[] | null, limit = 10
+): Promise<SongGeo[]> {
+  const lim = Math.max(1, Math.min(25, Math.floor(limit)));
+  const key = `geo:u1:${lim}:${scopeKey(scope)}:${ownArtistIds ? [...ownArtistIds].sort().join(",") : "*"}`;
   return cachedByVersion(key, async () => {
     const CSRC = await creditsSource();
     const F = `from ${CSRC} c join reports r on r.id = c.report_id`;
@@ -734,8 +749,9 @@ export async function topSongsGeo(scope: Scope, ownArtistIds: string[] | null): 
          select distinct c.song_id ${F} ${w.sql}${own}
        ), top as (
          select c.song_id, sum(c.quantity) q ${F}
-         ${ws.sql}${ws.sql ? " and" : " where"} c.song_id in (select song_id from mine)
-         group by c.song_id order by q desc limit 10
+         ${ws.sql}${ws.sql ? " and" : " where"} c.song_id in (select song_id from mine) and ${UGC_SQL}
+         group by c.song_id having sum(c.quantity) > 0
+         order by q desc limit ${lim}
        )
        select t.song_id, s.title, s.album, s.artist_string, t.q::float8 total,
               c.territory k, sum(c.quantity)::float8 v
@@ -743,7 +759,7 @@ export async function topSongsGeo(scope: Scope, ownArtistIds: string[] | null): 
        join songs s on s.id = t.song_id
        join ${CSRC} c on c.song_id = t.song_id
        join reports r on r.id = c.report_id
-       ${ws.sql ? ws.sql : "where true"}
+       ${ws.sql ? ws.sql : "where true"} and ${UGC_SQL}
        group by t.song_id, s.title, s.album, s.artist_string, t.q, c.territory`,
       params
     );

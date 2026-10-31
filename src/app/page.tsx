@@ -156,7 +156,11 @@ async function Dash({
       // Coğrafya: en çok dinlenen 10 şarkı. Sanatçı hesabında — label geneli
       // yetkisi olsa bile — yalnızca KENDİ şarkıları.
       view === "geo"
-        ? topSongsGeo(scope, viewer?.role === "artist" ? viewer.artistIds : null).catch(() => null)
+        ? topSongsGeo(
+            scope,
+            viewer?.role === "artist" ? viewer.artistIds : null,
+            viewer?.role === "artist" ? 5 : 10, // sanatçıda 5 yeter (Mert)
+          ).catch(() => null)
         : Promise.resolve(null),
     ]);
     songsGeo = g;

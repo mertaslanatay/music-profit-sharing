@@ -18,9 +18,13 @@ export function SongGeoCard({ songs, own }: { songs: SongGeo[]; own: boolean }) 
   return (
     <Card>
       <CardHead
-        title={own ? "En çok dinlenen 10 şarkın" : "En çok dinlenen 10 şarkı"}
-        sub="Hangi ülkelerde dinlendiler · seçili dönem, toplam dinlenme"
+        title={own ? `En çok dinlenen ${songs.length || 5} şarkın` : `En çok dinlenen ${songs.length || 10} şarkı`}
+        sub="Hangi ülkelerde dinlendiler · seçili dönem"
       />
+      <p className="-mt-2 mb-3 text-[11.5px] text-ink-400 leading-relaxed">
+        Müzik platformlarındaki dinlenmeler. TikTok, Facebook ve YouTube Shorts sayılmaz: oradaki
+        adetler şarkının videolarda kullanılma sayısı, dinlenme değil.
+      </p>
       {songs.length === 0 ? (
         <Empty title="Bu kapsamda dinlenme yok" sub="Dönem seçimini değiştirmeyi dene." icon={<Icon name="globe" />} />
       ) : (
