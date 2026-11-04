@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import type { BalanceRow, PaymentRow, PeriodStatus } from "@/lib/payments";
+import type { BalanceRow, LabelLedger, PaymentRow, PeriodStatus } from "@/lib/payments";
 import { foldKey } from "@/lib/normalize";
 import { money, num, amountIn } from "@/lib/format";
-import { Avatar, Bar, Button, Card, Empty, Icon, Td, Th } from "./ui";
+import { Avatar, Bar, Button, Card, Empty, Icon, InfoTip, Td, Th } from "./ui";
 import type { BankChangeRequestRow } from "@/lib/payments";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 
@@ -13,8 +13,15 @@ import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 const dateTr = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
-export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
+export function PaymentsPanel({
+  initial, labels = [],
+}: { initial: BalanceRow[]; labels?: { id: string; name: string }[] }) {
   const [rows, setRows] = useState(initial);
+  const [labelId, setLabelId] = useState<string | null>(null);
+  const [periodId, setPeriodId] = useState<string | null>(null);
+  const [ledgers, setLedgers] = useState<Record<string, LabelLedger>>({});
+  const [labelBusy, setLabelBusy] = useState(false);
+  const [labelErr, setLabelErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "open" | "unpaid" | "requested" | "nobank">("all");
   const [openArtist, setOpenArtist] = useState<BalanceRow | null>(null);
@@ -24,11 +31,74 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
     const r = await fetch("/api/payments");
     const j = await r.json();
     if (j.balances) setRows(j.balances);
+    // Ödeme kaydı/silme label kırılımını da değiştirir — yeniden çekilsin.
+    setLedgers({});
   }, []);
+
+  // Seçili label'ın kırılımı yoksa sunucudan al.
+  useEffect(() => {
+    if (!labelId || ledgers[labelId]) return;
+    let iptal = false;
+    setLabelBusy(true);
+    setLabelErr(null);
+    fetch(`/api/payments/by-label?labelId=${encodeURIComponent(labelId)}`)
+      .then(async (r) => {
+        const j = await r.json();
+        if (iptal) return;
+        if (!r.ok || !j.periods) throw new Error(j.error || "Label kırılımı alınamadı.");
+        setLedgers((m) => ({ ...m, [labelId]: j as LabelLedger }));
+      })
+      .catch((e) => { if (!iptal) setLabelErr(e instanceof Error ? e.message : String(e)); })
+      .finally(() => { if (!iptal) setLabelBusy(false); });
+    return () => { iptal = true; };
+  }, [labelId, ledgers]);
+
+  const ledger = labelId ? ledgers[labelId] ?? null : null;
+  const labelName = labels.find((l) => l.id === labelId)?.name ?? "";
+  const selPeriod = ledger?.periods.find((p) => p.periodId === periodId) ?? null;
+
+  /**
+   * Label (ve isteğe bağlı dönem) seçiliyken her sanatçının rakamları o
+   * kapsama indirgenir; kapsamda hiç kaydı olmayan sanatçı listeden düşer.
+   * Banka, istek ve son ödeme bilgileri sanatçı genelinden aynen gelir.
+   */
+  const scoped = useMemo<BalanceRow[]>(() => {
+    if (!labelId) return rows;
+    if (!ledger) return [];
+    const disp = new Map(ledger.periods.map((p) => [p.periodId, p]));
+    const by = new Map<string, { net: number; paid: number; rem: number; unpaid: number; oldest: number | null; oldestLabel: string | null }>();
+    for (const c of ledger.cells) {
+      if (periodId && c.periodId !== periodId) continue;
+      const a = by.get(c.artistId) ?? { net: 0, paid: 0, rem: 0, unpaid: 0, oldest: null, oldestLabel: null };
+      a.net += c.net; a.paid += c.paid; a.rem += c.remaining;
+      if (c.remaining > 0.005) {
+        a.unpaid += 1;
+        const pr = disp.get(c.periodId);
+        if (pr && (a.oldest === null || pr.sort < a.oldest)) { a.oldest = pr.sort; a.oldestLabel = pr.display; }
+      }
+      by.set(c.artistId, a);
+    }
+    return rows
+      .filter((r) => {
+        const a = by.get(r.artistId);
+        return a && (Math.abs(a.net) > 0.005 || a.paid > 0.005);
+      })
+      .map((r) => {
+        const a = by.get(r.artistId)!;
+        return {
+          ...r,
+          earned: a.net, paid: a.paid, balance: a.rem,
+          unpaidPeriods: a.unpaid, oldestUnpaidSort: a.oldest, oldestUnpaidLabel: a.oldestLabel,
+        };
+      })
+      .sort((x, y) => y.balance - x.balance || y.earned - x.earned);
+  }, [rows, labelId, ledger, periodId]);
+
+  const pickLabel = (id: string | null) => { setLabelId(id); setPeriodId(null); };
 
   const list = useMemo(() => {
     const k = foldKey(q);
-    return rows.filter((r) => {
+    return scoped.filter((r) => {
       if (k && !foldKey(r.artistName).includes(k)) return false;
       if (filter === "open") return r.balance > 0.005;
       if (filter === "unpaid") return r.unpaidPeriods >= 2;
@@ -36,31 +106,65 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
       if (filter === "nobank") return r.balance > 0.005 && !r.bank?.iban;
       return true;
     });
-  }, [rows, q, filter]);
+  }, [scoped, q, filter]);
 
   const totals = useMemo(
     () => ({
-      earned: rows.reduce((a, r) => a + r.earned, 0),
-      paid: rows.reduce((a, r) => a + r.paid, 0),
-      balance: rows.reduce((a, r) => a + r.balance, 0),
-      requests: rows.filter((r) => r.hasOpenRequest).length,
-      noBank: rows.filter((r) => r.balance > 0.005 && !r.bank?.iban).length,
+      earned: scoped.reduce((a, r) => a + r.earned, 0),
+      paid: scoped.reduce((a, r) => a + r.paid, 0),
+      balance: scoped.reduce((a, r) => a + r.balance, 0),
+      requests: scoped.filter((r) => r.hasOpenRequest).length,
+      noBank: scoped.filter((r) => r.balance > 0.005 && !r.bank?.iban).length,
     }),
-    [rows]
+    [scoped]
   );
 
-  const maxBalance = Math.max(...rows.map((r) => r.balance), 0);
+  const maxBalance = Math.max(...scoped.map((r) => r.balance), 0);
+  const kapsamYazisi = labelId
+    ? `${labelName} · ${selPeriod ? selPeriod.display : "tüm dönemler"}`
+    : "tüm dönemler, net";
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Toplam hakediş" value={money(totals.earned)} sub="tüm dönemler, net" />
+        <Stat label="Toplam hakediş" value={money(totals.earned)} sub={kapsamYazisi} />
         <Stat label="Ödenen" value={money(totals.paid)} tone="brand" />
         <Stat label="Bekleyen bakiye" value={money(totals.balance)} tone="amber"
-          sub={`${num(rows.filter((r) => r.balance > 0.005).length)} sanatçı`} />
+          sub={`${num(scoped.filter((r) => r.balance > 0.005).length)} sanatçı`} />
         <Stat label="Ödeme isteği" value={num(totals.requests)} tone={totals.requests ? "rose" : "muted"}
           sub={totals.requests ? "yanıt bekliyor" : "bekleyen yok"} />
       </div>
+
+      {labels.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="eyebrow mr-1">Label</span>
+          {[{ id: null as string | null, name: "Tümü" }, ...labels].map((l) => (
+            <button
+              key={l.id ?? "all"}
+              type="button"
+              onClick={() => pickLabel(l.id)}
+              aria-pressed={labelId === l.id}
+              className={clsx(
+                "min-h-[34px] px-3.5 rounded-full text-[12.5px] font-medium transition-colors",
+                labelId === l.id ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
+              )}
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {labelId && (
+        <LabelPeriodsCard
+          name={labelName}
+          ledger={ledger}
+          busy={labelBusy}
+          err={labelErr}
+          periodId={periodId}
+          onPick={(id) => setPeriodId((cur) => (cur === id ? null : id))}
+        />
+      )}
 
       {totals.noBank > 0 && (
         <div className="rounded-xl2 bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-2.5">
@@ -81,6 +185,7 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
           <div>
             <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900">Sanatçı Bakiyeleri</h3>
             <p className="text-[12.5px] text-ink-500 mt-0.5">
+              {labelId && <>{kapsamYazisi} · </>}
               {num(list.length)} sanatçı · bekleyen toplam{" "}
               <b className="text-ink-700">{money(list.reduce((a, r) => a + r.balance, 0))}</b>
             </p>
@@ -113,7 +218,9 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
           </div>
         </div>
 
-        {list.length === 0 ? (
+        {labelId && !ledger ? (
+          <Empty title={labelErr ? "Yüklenemedi" : "Yükleniyor…"} sub={labelErr ?? `${labelName} kırılımı hesaplanıyor.`} icon={<Icon name="wallet" />} />
+        ) : list.length === 0 ? (
           <Empty title="Kayıt yok" sub="Filtreyi değiştirmeyi dene." icon={<Icon name="wallet" />} />
         ) : (
           <div className="overflow-x-auto scroll-thin">
@@ -178,12 +285,12 @@ export function PaymentsPanel({ initial }: { initial: BalanceRow[] }) {
                     </Td>
                     <Td align="right">
                       <div className="flex items-center justify-end gap-2">
-                        <button type="button" onClick={() => setBankArtist(r)}
+                        <button type="button" onClick={() => setBankArtist(rows.find((x) => x.artistId === r.artistId) ?? r)}
                           aria-label={`${r.artistName} — banka bilgileri`}
                           className="min-h-[34px] px-3 rounded-full border border-line text-[12px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
                           Banka
                         </button>
-                        <button type="button" onClick={() => setOpenArtist(r)}
+                        <button type="button" onClick={() => setOpenArtist(rows.find((x) => x.artistId === r.artistId) ?? r)}
                           aria-label={`${r.artistName} — cari hesap ve ödeme kaydı`}
                           className="min-h-[34px] px-3 rounded-full bg-brand-500/15 text-brand-700 text-[12px] font-semibold hover:bg-brand-500 hover:text-white transition-colors">
                           Cari hesap
@@ -854,6 +961,98 @@ export function BankRequestsPanel() {
         )}
       </Card>
     </div>
+  );
+}
+
+/* ----------------------------------------- label seçiliyken dönem tablosu */
+
+function LabelPeriodsCard({
+  name, ledger, busy, err, periodId, onPick,
+}: {
+  name: string;
+  ledger: LabelLedger | null;
+  busy: boolean;
+  err: string | null;
+  periodId: string | null;
+  onPick: (id: string) => void;
+}) {
+  const periods = ledger?.periods ?? [];
+  const max = Math.max(...periods.map((p) => p.net), 0);
+  const sum = periods.reduce(
+    (a, p) => ({ net: a.net + p.net, paid: a.paid + p.paid, rem: a.rem + p.remaining }),
+    { net: 0, paid: 0, rem: 0 }
+  );
+  return (
+    <Card pad={false}>
+      <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
+        <div>
+          <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900 flex items-center gap-2">
+            {name} · dönem bazında
+            <InfoTip label="Ödenen nasıl hesaplanıyor?">
+              Ödemeler sanatçı ve dönem bazında kaydediliyor. Bir sanatçının o dönemde birden fazla
+              label&apos;dan geliri varsa ödenen tutar, label&apos;ların o dönemdeki net payına göre bölünür.
+            </InfoTip>
+          </h3>
+          <p className="text-[12.5px] text-ink-500 mt-0.5">
+            {periodId ? "Seçili döneme tekrar tıklayarak tüm dönemlere dön." : "Bir döneme tıkla, aşağıdaki sanatçı listesi o döneme süzülsün."}
+          </p>
+        </div>
+      </div>
+      {err ? (
+        <p className="px-5 py-6 text-[13px] text-accent-rose">{err}</p>
+      ) : !ledger || busy ? (
+        <p className="px-5 py-6 text-[13px] text-ink-500">Yükleniyor…</p>
+      ) : periods.length === 0 ? (
+        <p className="px-5 py-6 text-[13px] text-ink-500">Bu label için yayınlanmış dönem yok.</p>
+      ) : (
+        <div className="overflow-x-auto scroll-thin max-h-[420px] overflow-y-auto">
+          <table className="w-full min-w-[720px]">
+            <thead className="bg-ink-900/[0.02] border-b border-line sticky top-0 z-10">
+              <tr>
+                <Th align="left">Dönem</Th>
+                <Th align="right">Hakediş</Th>
+                <Th align="right">Ödenen</Th>
+                <Th align="right">Bekleyen</Th>
+                <Th align="left" className="w-32">Pay</Th>
+                <Th align="center">Sanatçı</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {periods.map((p) => {
+                const secili = p.periodId === periodId;
+                return (
+                  <tr key={p.periodId} className={clsx(secili ? "bg-brand-500/10" : "hover:bg-ink-900/[0.02]")}>
+                    <Td>
+                      <button type="button" onClick={() => onPick(p.periodId)} aria-pressed={secili}
+                        className="font-medium text-ink-900 hover:text-brand-600 text-left">
+                        {p.display}
+                      </button>
+                    </Td>
+                    <Td align="right" className="text-ink-500">{money(p.net)}</Td>
+                    <Td align="right" className="text-brand-600">{p.paid > 0.005 ? money(p.paid) : "—"}</Td>
+                    <Td align="right" className="font-semibold text-ink-900">
+                      {p.remaining > 0.005 ? money(p.remaining) : <span className="text-[11px] font-normal text-brand-600">ödendi</span>}
+                    </Td>
+                    <Td><Bar value={p.net} max={max} color="rgb(var(--c-brand-500))" /></Td>
+                    <Td align="center" className="text-[12px] tabular text-ink-600">{num(p.artistCount)}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t border-line bg-ink-900/[0.02]">
+              <tr>
+                <Td className="font-semibold text-ink-900">Toplam</Td>
+                <Td align="right" className="font-semibold text-ink-700">{money(sum.net)}</Td>
+                <Td align="right" className="font-semibold text-brand-600">{money(sum.paid)}</Td>
+                <Td align="right" className="font-semibold text-ink-900">{money(sum.rem)}</Td>
+                <Td>{null}</Td>
+                <Td>{null}</Td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 

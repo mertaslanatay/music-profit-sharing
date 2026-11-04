@@ -130,7 +130,7 @@ export function AdminTabs({
 
         <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 py-5 sm:py-6">
           {tab === "reports" && <AdminPanel initialReports={reports} />}
-          {tab === "payments" && <PaymentsPanel initial={balances} />}
+          {tab === "payments" && <PaymentsPanel initial={balances} labels={labels} />}
           {tab === "bank-requests" && <BankRequestsPanel />}
           {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
           {tab === "messages" && <SupportPanel mode="admin" />}
