@@ -184,68 +184,56 @@ export async function listBalances(): Promise<BalanceRow[]> {
   }));
 }
 
-/* --------------------------------------------- label bazında bakiye */
+/* ------------------------------- label / ödeme partisi bazında bakiye */
 
 /**
- * Bir label'ın sanatçı × dönem kırılımı (Yönetim › Ödemeler › label filtresi).
+ * Yönetim › Ödemeler'deki Label ve Ödeme partisi seçicilerinin kaynağı:
+ * sanatçı × dönem × label × rapor (ödeme partisi) hücreleri.
  *
  * Hakediş (net) doğrudan krediden gelir: v_artist_period_net ile AYNI kaynak
  * (v_credits_effective, yayında/kilitli raporlar) ve aynı net formülü.
  *
- * Ödemeler label'a değil sanatçı + döneme kaydediliyor (payment_periods).
- * Bu yüzden "bu label'dan ödenen" = o sanatçı-dönem ödemesinin, label'ın o
- * sanatçı-dönem netindeki payı kadarı. Bir sanatçı-dönemin label dilimlerinin
- * toplamı her zaman v_artist_period_status'taki ödenene eşittir.
+ * Ödemeler label'a / partiye değil sanatçı + döneme kaydediliyor
+ * (payment_periods). Bu yüzden bir hücrenin "ödenen"i = o sanatçı-dönem
+ * ödemesinin, hücrenin o sanatçı-dönem netindeki payı kadarı. Bir
+ * sanatçı-dönemin hücrelerinin toplamı v_artist_period_status ile birebir.
+ *
+ * Kompakt biçim (istemciye ~4 bin satır gidiyor): her hücre
+ * [sanatçıIdx, dönemIdx, labelIdx, raporIdx, net, ödenen].
  */
-export interface LabelPeriodRow {
-  periodId: string;
-  display: string;
-  sort: number;
-  net: number;
-  paid: number;
-  remaining: number;
-  artistCount: number;
+export interface PaymentBreakdown {
+  artists: string[];
+  periods: { id: string; display: string; sort: number }[];
+  labels: string[];
+  reports: string[];
+  cells: [number, number, number, number, number, number][];
 }
 
-export interface LabelArtistPeriod {
-  artistId: string;
-  periodId: string;
-  net: number;
-  paid: number;
-  remaining: number;
-}
+type NetCell = { a: string; p: string; l: string; r: string; net: number; tot: number };
 
-export interface LabelLedger {
-  labelId: string;
-  periods: LabelPeriodRow[];
-  cells: LabelArtistPeriod[];
-}
-
-type NetCell = { a: string; p: string; l: string; net: number; tot: number };
-
-/** Tüm label'lar için sanatçı × dönem × label neti — veri sürümüne göre önbellekli. */
-async function labelNetCells(): Promise<NetCell[]> {
-  return cachedByVersion("label-net:v1", async () => {
-    const rows = await query<{ a: string; p: string; l: string; net: number; tot: number }>(
+/** Kredi tarafı — veri sürümüne göre önbellekli (ödemeler sürümü artırmıyor, ayrı okunur). */
+async function breakdownNetCells(): Promise<NetCell[]> {
+  return cachedByVersion("pay-breakdown:v1", async () => {
+    const rows = await query<NetCell>(
       `with lp as (
-         select c.artist_id, c.period_id, c.label_id,
+         select c.artist_id, c.period_id, c.label_id, c.report_id,
                 sum(c.gross * (r.received / nullif(r.gross, 0))) net
          from v_credits_effective c
          join reports r on r.id = c.report_id
          where r.status in ('published','locked') and c.label_id is not null
-         group by 1, 2, 3
+         group by 1, 2, 3, 4
        )
-       select artist_id a, period_id p, label_id l, net::float8,
+       select artist_id a, period_id p, label_id l, report_id r, net::float8 net,
               (sum(net) over (partition by artist_id, period_id))::float8 tot
        from lp`
     );
-    return rows.map((r) => ({ a: r.a, p: r.p, l: r.l, net: n(r.net), tot: n(r.tot) }));
+    return rows.map((x) => ({ ...x, net: n(x.net), tot: n(x.tot) }));
   });
 }
 
-export async function getLabelLedger(labelId: string): Promise<LabelLedger> {
+export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
   const [cells, paidRows, periodRows] = await Promise.all([
-    labelNetCells(),
+    breakdownNetCells(),
     query<{ a: string; p: string; paid: number }>(
       `select pay.artist_id a, pp.period_id p, sum(pp.amount_usd)::float8 paid
        from payment_periods pp join payments pay on pay.id = pp.payment_id
@@ -257,39 +245,35 @@ export async function getLabelLedger(labelId: string): Promise<LabelLedger> {
   ]);
 
   const paidOf = new Map(paidRows.map((r) => [r.a + "|" + r.p, n(r.paid)]));
-  const out: LabelArtistPeriod[] = [];
+  const pInfo = new Map(periodRows.map((r) => [r.id, r]));
+  const idx = <K,>(list: K[], map: Map<K, number>, k: K) => {
+    let i = map.get(k);
+    if (i === undefined) { i = list.length; list.push(k); map.set(k, i); }
+    return i;
+  };
+  const out: PaymentBreakdown = { artists: [], periods: [], labels: [], reports: [], cells: [] };
+  const aI = new Map<string, number>(), lI = new Map<string, number>(), rI = new Map<string, number>();
+  const pIds: string[] = [], pI = new Map<string, number>();
+  const r4 = (v: number) => Math.round(v * 1e6) / 1e6;
+
   for (const c of cells) {
-    if (c.l !== labelId) continue;
     const paidAll = paidOf.get(c.a + "|" + c.p) ?? 0;
     const paid = c.tot > 0 ? paidAll * (c.net / c.tot) : 0;
-    out.push({ artistId: c.a, periodId: c.p, net: c.net, paid, remaining: c.net - paid });
+    out.cells.push([
+      idx(out.artists, aI, c.a), idx(pIds, pI, c.p),
+      idx(out.labels, lI, c.l), idx(out.reports, rI, c.r),
+      r4(c.net), r4(paid),
+    ]);
   }
-
-  const pInfo = new Map(periodRows.map((r) => [r.id, r]));
-  const agg = new Map<string, LabelPeriodRow>();
-  for (const c of out) {
-    let row = agg.get(c.periodId);
-    if (!row) {
-      const pr = pInfo.get(c.periodId);
-      row = {
-        periodId: c.periodId,
-        display: pr ? periodDisplay({ year: pr.year, month: pr.month, quarter: pr.quarter, label: pr.label }) : "—",
-        sort: pr?.sort ?? 0,
-        net: 0, paid: 0, remaining: 0, artistCount: 0,
-      };
-      agg.set(c.periodId, row);
-    }
-    row.net += c.net;
-    row.paid += c.paid;
-    row.remaining += c.remaining;
-    if (Math.abs(c.net) > 0.005) row.artistCount += 1;
-  }
-
-  return {
-    labelId,
-    periods: [...agg.values()].sort((a, b) => b.sort - a.sort),
-    cells: out,
-  };
+  out.periods = pIds.map((id) => {
+    const pr = pInfo.get(id);
+    return {
+      id,
+      display: pr ? periodDisplay({ year: pr.year, month: pr.month, quarter: pr.quarter, label: pr.label }) : "—",
+      sort: pr?.sort ?? 0,
+    };
+  });
+  return out;
 }
 
 /* ----------------------------------------------- tek sanatçının cari hesabı */

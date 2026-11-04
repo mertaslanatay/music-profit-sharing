@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import type { BalanceRow, LabelLedger, PaymentRow, PeriodStatus } from "@/lib/payments";
+import type { BalanceRow, PaymentBreakdown, PaymentRow, PeriodStatus } from "@/lib/payments";
+import type { ReportRow } from "@/lib/queries";
 import { foldKey } from "@/lib/normalize";
 import { money, num, amountIn } from "@/lib/format";
-import { Avatar, Bar, Button, Card, Empty, Icon, InfoTip, Td, Th } from "./ui";
+import { Avatar, Bar, Button, Card, Empty, Icon, Td, Th } from "./ui";
 import type { BankChangeRequestRow } from "@/lib/payments";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 
@@ -13,15 +14,20 @@ import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 const dateTr = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
+type Durum = "paid" | "partial" | "unpaid";
+
 export function PaymentsPanel({
-  initial, labels = [],
-}: { initial: BalanceRow[]; labels?: { id: string; name: string }[] }) {
+  initial, labels = [], reports = [],
+}: {
+  initial: BalanceRow[];
+  labels?: { id: string; name: string }[];
+  reports?: ReportRow[];
+}) {
   const [rows, setRows] = useState(initial);
-  const [labelId, setLabelId] = useState<string | null>(null);
-  const [periodId, setPeriodId] = useState<string | null>(null);
-  const [ledgers, setLedgers] = useState<Record<string, LabelLedger>>({});
-  const [labelBusy, setLabelBusy] = useState(false);
-  const [labelErr, setLabelErr] = useState<string | null>(null);
+  const [labelId, setLabelId] = useState("");
+  const [reportId, setReportId] = useState("");
+  const [bd, setBd] = useState<PaymentBreakdown | null>(null);
+  const [bdErr, setBdErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "open" | "unpaid" | "requested" | "nobank">("all");
   const [openArtist, setOpenArtist] = useState<BalanceRow | null>(null);
@@ -31,70 +37,99 @@ export function PaymentsPanel({
     const r = await fetch("/api/payments");
     const j = await r.json();
     if (j.balances) setRows(j.balances);
-    // Ödeme kaydı/silme label kırılımını da değiştirir — yeniden çekilsin.
-    setLedgers({});
+    // Ödeme kaydı/silme label ve parti kırılımını da değiştirir.
+    setBd(null);
   }, []);
 
-  // Seçili label'ın kırılımı yoksa sunucudan al.
+  const kapsamli = !!(labelId || reportId);
+
+  // Label veya parti ilk seçildiğinde kırılımı al (tüm label/partiler tek seferde).
   useEffect(() => {
-    if (!labelId || ledgers[labelId]) return;
+    if (!kapsamli || bd) return;
     let iptal = false;
-    setLabelBusy(true);
-    setLabelErr(null);
-    fetch(`/api/payments/by-label?labelId=${encodeURIComponent(labelId)}`)
+    setBdErr(null);
+    fetch("/api/payments/breakdown")
       .then(async (r) => {
         const j = await r.json();
         if (iptal) return;
-        if (!r.ok || !j.periods) throw new Error(j.error || "Label kırılımı alınamadı.");
-        setLedgers((m) => ({ ...m, [labelId]: j as LabelLedger }));
+        if (!r.ok || !j.cells) throw new Error(j.error || "Kırılım alınamadı.");
+        setBd(j as PaymentBreakdown);
       })
-      .catch((e) => { if (!iptal) setLabelErr(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!iptal) setLabelBusy(false); });
+      .catch((e) => { if (!iptal) setBdErr(e instanceof Error ? e.message : String(e)); });
     return () => { iptal = true; };
-  }, [labelId, ledgers]);
+  }, [kapsamli, bd]);
 
-  const ledger = labelId ? ledgers[labelId] ?? null : null;
+  const partiler = useMemo(
+    () => reports
+      .filter((r) => r.status !== "draft")
+      .sort((a, b) => b.periodSort - a.periodSort || b.createdAt.localeCompare(a.createdAt)),
+    [reports]
+  );
+  const partiAdi = (r: ReportRow) => r.periodDisplay || r.periodRange || r.title;
   const labelName = labels.find((l) => l.id === labelId)?.name ?? "";
-  const selPeriod = ledger?.periods.find((p) => p.periodId === periodId) ?? null;
+  const parti = partiler.find((r) => r.id === reportId) ?? null;
 
   /**
-   * Label (ve isteğe bağlı dönem) seçiliyken her sanatçının rakamları o
-   * kapsama indirgenir; kapsamda hiç kaydı olmayan sanatçı listeden düşer.
-   * Banka, istek ve son ödeme bilgileri sanatçı genelinden aynen gelir.
+   * Label ve/veya ödeme partisi seçiliyken her sanatçının rakamları o kapsama
+   * indirgenir; kapsamda kaydı olmayan sanatçı listeden düşer. Banka, istek
+   * ve son ödeme bilgileri sanatçı genelinden aynen gelir.
    */
-  const scoped = useMemo<BalanceRow[]>(() => {
-    if (!labelId) return rows;
-    if (!ledger) return [];
-    const disp = new Map(ledger.periods.map((p) => [p.periodId, p]));
-    const by = new Map<string, { net: number; paid: number; rem: number; unpaid: number; oldest: number | null; oldestLabel: string | null }>();
-    for (const c of ledger.cells) {
-      if (periodId && c.periodId !== periodId) continue;
-      const a = by.get(c.artistId) ?? { net: 0, paid: 0, rem: 0, unpaid: 0, oldest: null, oldestLabel: null };
-      a.net += c.net; a.paid += c.paid; a.rem += c.remaining;
-      if (c.remaining > 0.005) {
-        a.unpaid += 1;
-        const pr = disp.get(c.periodId);
-        if (pr && (a.oldest === null || pr.sort < a.oldest)) { a.oldest = pr.sort; a.oldestLabel = pr.display; }
-      }
-      by.set(c.artistId, a);
+  const { scoped, durum, kapsamToplam } = useMemo(() => {
+    const durum = new Map<string, Durum>();
+    if (!kapsamli) return { scoped: rows, durum, kapsamToplam: null };
+    if (!bd) return { scoped: [] as BalanceRow[], durum, kapsamToplam: null };
+    const li = labelId ? bd.labels.indexOf(labelId) : -1;
+    const ri = reportId ? bd.reports.indexOf(reportId) : -1;
+    if ((labelId && li < 0) || (reportId && ri < 0)) {
+      return { scoped: [] as BalanceRow[], durum, kapsamToplam: { earned: 0, paid: 0, balance: 0 } };
     }
-    return rows
-      .filter((r) => {
-        const a = by.get(r.artistId);
-        return a && (Math.abs(a.net) > 0.005 || a.paid > 0.005);
-      })
-      .map((r) => {
-        const a = by.get(r.artistId)!;
-        return {
-          ...r,
-          earned: a.net, paid: a.paid, balance: a.rem,
-          unpaidPeriods: a.unpaid, oldestUnpaidSort: a.oldest, oldestUnpaidLabel: a.oldestLabel,
-        };
-      })
-      .sort((x, y) => y.balance - x.balance || y.earned - x.earned);
-  }, [rows, labelId, ledger, periodId]);
+    // sanatçı → dönem → [net, ödenen]
+    const by = new Map<number, Map<number, [number, number]>>();
+    const t = { earned: 0, paid: 0, balance: 0 };
+    for (const [a, p, l, r, net, paid] of bd.cells) {
+      if (li >= 0 && l !== li) continue;
+      if (ri >= 0 && r !== ri) continue;
+      let m = by.get(a);
+      if (!m) { m = new Map(); by.set(a, m); }
+      const v = m.get(p) ?? [0, 0];
+      v[0] += net; v[1] += paid;
+      m.set(p, v);
+      t.earned += net; t.paid += paid; t.balance += net - paid;
+    }
+    const aIdx = new Map(bd.artists.map((id, i) => [id, i]));
+    const out: BalanceRow[] = [];
+    for (const r of rows) {
+      const i = aIdx.get(r.artistId);
+      const m = i === undefined ? undefined : by.get(i);
+      if (!m) continue;
+      let net = 0, paid = 0, unpaid = 0;
+      let oldest: { sort: number; display: string } | null = null;
+      for (const [p, [pn, pp]] of m) {
+        net += pn; paid += pp;
+        if (pn - pp > 0.005) {
+          unpaid += 1;
+          const pr = bd.periods[p];
+          if (!oldest || pr.sort < oldest.sort) oldest = pr;
+        }
+      }
+      if (Math.abs(net) <= 0.005 && paid <= 0.005) continue;
+      const balance = net - paid;
+      durum.set(r.artistId, balance <= 0.005 ? "paid" : paid > 0.005 ? "partial" : "unpaid");
+      out.push({
+        ...r, earned: net, paid, balance,
+        unpaidPeriods: unpaid,
+        oldestUnpaidSort: oldest?.sort ?? null,
+        oldestUnpaidLabel: oldest?.display ?? null,
+      });
+    }
+    out.sort((x, y) => y.balance - x.balance || y.earned - x.earned);
+    return { scoped: out, durum, kapsamToplam: t };
+  }, [rows, kapsamli, bd, labelId, reportId]);
 
-  const pickLabel = (id: string | null) => { setLabelId(id); setPeriodId(null); };
+  const kapsamYazisi = kapsamli
+    ? [labelName || "Tüm label'lar", parti ? partiAdi(parti) : "tüm partiler"].join(" · ")
+    : "tüm dönemler, net";
+  const baseRow = (r: BalanceRow) => rows.find((x) => x.artistId === r.artistId) ?? r;
 
   const list = useMemo(() => {
     const k = foldKey(q);
@@ -110,19 +145,23 @@ export function PaymentsPanel({
 
   const totals = useMemo(
     () => ({
-      earned: scoped.reduce((a, r) => a + r.earned, 0),
-      paid: scoped.reduce((a, r) => a + r.paid, 0),
-      balance: scoped.reduce((a, r) => a + r.balance, 0),
+      // Kapsam seçiliyken toplamlar doğrudan hücrelerden — listeden düşen
+      // kuruş altı sanatçılar yüzünden kuruş farkı çıkmasın.
+      earned: kapsamToplam ? kapsamToplam.earned : scoped.reduce((a, r) => a + r.earned, 0),
+      paid: kapsamToplam ? kapsamToplam.paid : scoped.reduce((a, r) => a + r.paid, 0),
+      balance: kapsamToplam ? kapsamToplam.balance : scoped.reduce((a, r) => a + r.balance, 0),
       requests: scoped.filter((r) => r.hasOpenRequest).length,
       noBank: scoped.filter((r) => r.balance > 0.005 && !r.bank?.iban).length,
     }),
-    [scoped]
+    [scoped, kapsamToplam]
   );
 
   const maxBalance = Math.max(...scoped.map((r) => r.balance), 0);
-  const kapsamYazisi = labelId
-    ? `${labelName} · ${selPeriod ? selPeriod.display : "tüm dönemler"}`
-    : "tüm dönemler, net";
+  const durumSay = useMemo(() => {
+    const c = { paid: 0, partial: 0, unpaid: 0 };
+    for (const d of durum.values()) c[d] += 1;
+    return c;
+  }, [durum]);
 
   return (
     <div className="space-y-4">
@@ -134,37 +173,6 @@ export function PaymentsPanel({
         <Stat label="Ödeme isteği" value={num(totals.requests)} tone={totals.requests ? "rose" : "muted"}
           sub={totals.requests ? "yanıt bekliyor" : "bekleyen yok"} />
       </div>
-
-      {labels.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="eyebrow mr-1">Label</span>
-          {[{ id: null as string | null, name: "Tümü" }, ...labels].map((l) => (
-            <button
-              key={l.id ?? "all"}
-              type="button"
-              onClick={() => pickLabel(l.id)}
-              aria-pressed={labelId === l.id}
-              className={clsx(
-                "min-h-[34px] px-3.5 rounded-full text-[12.5px] font-medium transition-colors",
-                labelId === l.id ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
-              )}
-            >
-              {l.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {labelId && (
-        <LabelPeriodsCard
-          name={labelName}
-          ledger={ledger}
-          busy={labelBusy}
-          err={labelErr}
-          periodId={periodId}
-          onPick={(id) => setPeriodId((cur) => (cur === id ? null : id))}
-        />
-      )}
 
       {totals.noBank > 0 && (
         <div className="rounded-xl2 bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-2.5">
@@ -185,7 +193,7 @@ export function PaymentsPanel({
           <div>
             <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900">Sanatçı Bakiyeleri</h3>
             <p className="text-[12.5px] text-ink-500 mt-0.5">
-              {labelId && <>{kapsamYazisi} · </>}
+              {kapsamli && <>{kapsamYazisi} · </>}
               {num(list.length)} sanatçı · bekleyen toplam{" "}
               <b className="text-ink-700">{money(list.reduce((a, r) => a + r.balance, 0))}</b>
             </p>
@@ -197,6 +205,20 @@ export function PaymentsPanel({
               placeholder="Sanatçı ara…"
               className="h-9 rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 w-44"
             />
+            {labels.length > 0 && (
+              <select value={labelId} onChange={(e) => setLabelId(e.target.value)} aria-label="Label"
+                className="h-9 rounded-xl text-[13px] max-w-[190px]">
+                <option value="">Tüm label&apos;lar</option>
+                {labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            )}
+            {partiler.length > 0 && (
+              <select value={reportId} onChange={(e) => setReportId(e.target.value)} aria-label="Ödeme partisi"
+                className="h-9 rounded-xl text-[13px] max-w-[220px]">
+                <option value="">Tüm ödeme partileri</option>
+                {partiler.map((r) => <option key={r.id} value={r.id}>{partiAdi(r)}</option>)}
+              </select>
+            )}
             {([
               ["all", "Tümü"],
               ["open", "Bakiyesi olan"],
@@ -218,8 +240,16 @@ export function PaymentsPanel({
           </div>
         </div>
 
-        {labelId && !ledger ? (
-          <Empty title={labelErr ? "Yüklenemedi" : "Yükleniyor…"} sub={labelErr ?? `${labelName} kırılımı hesaplanıyor.`} icon={<Icon name="wallet" />} />
+        {reportId && bd && (
+          <div className="px-5 py-2.5 border-b border-line flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-600">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-brand-500" />Ödendi <b className="text-ink-900 tabular">{num(durumSay.paid)}</b></span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent-sun" />Kısmen <b className="text-ink-900 tabular">{num(durumSay.partial)}</b></span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent-warn" />Ödenmedi <b className="text-ink-900 tabular">{num(durumSay.unpaid)}</b></span>
+            <span className="text-ink-400">Ödemeler dönem bazında kaydedildiği için bir sanatçının aynı aydaki birden fazla label geliri varsa ödenen, gelir oranında bölünür.</span>
+          </div>
+        )}
+        {kapsamli && !bd ? (
+          <Empty title={bdErr ? "Yüklenemedi" : "Yükleniyor…"} sub={bdErr ?? "Label / parti kırılımı hesaplanıyor."} icon={<Icon name="wallet" />} />
         ) : list.length === 0 ? (
           <Empty title="Kayıt yok" sub="Filtreyi değiştirmeyi dene." icon={<Icon name="wallet" />} />
         ) : (
@@ -258,7 +288,11 @@ export function PaymentsPanel({
                     <Td align="right" className="text-brand-600">{r.paid ? money(r.paid) : "—"}</Td>
                     <Td align="right" className="font-semibold text-ink-900">{money(r.balance)}</Td>
                     <Td>
-                      <Bar value={r.balance} max={maxBalance} color="rgb(var(--c-brand-500))" />
+                      {reportId && durum.get(r.artistId) ? (
+                        <DurumRozet d={durum.get(r.artistId)!} />
+                      ) : (
+                        <Bar value={r.balance} max={maxBalance} color="rgb(var(--c-brand-500))" />
+                      )}
                     </Td>
                     <Td align="center">
                       {r.unpaidPeriods > 0 ? (
@@ -285,12 +319,12 @@ export function PaymentsPanel({
                     </Td>
                     <Td align="right">
                       <div className="flex items-center justify-end gap-2">
-                        <button type="button" onClick={() => setBankArtist(rows.find((x) => x.artistId === r.artistId) ?? r)}
+                        <button type="button" onClick={() => setBankArtist(baseRow(r))}
                           aria-label={`${r.artistName} — banka bilgileri`}
                           className="min-h-[34px] px-3 rounded-full border border-line text-[12px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
                           Banka
                         </button>
-                        <button type="button" onClick={() => setOpenArtist(rows.find((x) => x.artistId === r.artistId) ?? r)}
+                        <button type="button" onClick={() => setOpenArtist(baseRow(r))}
                           aria-label={`${r.artistName} — cari hesap ve ödeme kaydı`}
                           className="min-h-[34px] px-3 rounded-full bg-brand-500/15 text-brand-700 text-[12px] font-semibold hover:bg-brand-500 hover:text-white transition-colors">
                           Cari hesap
@@ -964,95 +998,16 @@ export function BankRequestsPanel() {
   );
 }
 
-/* ----------------------------------------- label seçiliyken dönem tablosu */
-
-function LabelPeriodsCard({
-  name, ledger, busy, err, periodId, onPick,
-}: {
-  name: string;
-  ledger: LabelLedger | null;
-  busy: boolean;
-  err: string | null;
-  periodId: string | null;
-  onPick: (id: string) => void;
-}) {
-  const periods = ledger?.periods ?? [];
-  const max = Math.max(...periods.map((p) => p.net), 0);
-  const sum = periods.reduce(
-    (a, p) => ({ net: a.net + p.net, paid: a.paid + p.paid, rem: a.rem + p.remaining }),
-    { net: 0, paid: 0, rem: 0 }
-  );
+function DurumRozet({ d }: { d: Durum }) {
+  const m = {
+    paid: { t: "Ödendi", c: "bg-brand-500/15 text-brand-700" },
+    partial: { t: "Kısmen", c: "bg-accent-sun/20 text-ink-800" },
+    unpaid: { t: "Ödenmedi", c: "bg-accent-warn/15 text-accent-warn" },
+  }[d];
   return (
-    <Card pad={false}>
-      <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
-        <div>
-          <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900 flex items-center gap-2">
-            {name} · dönem bazında
-            <InfoTip label="Ödenen nasıl hesaplanıyor?">
-              Ödemeler sanatçı ve dönem bazında kaydediliyor. Bir sanatçının o dönemde birden fazla
-              label&apos;dan geliri varsa ödenen tutar, label&apos;ların o dönemdeki net payına göre bölünür.
-            </InfoTip>
-          </h3>
-          <p className="text-[12.5px] text-ink-500 mt-0.5">
-            {periodId ? "Seçili döneme tekrar tıklayarak tüm dönemlere dön." : "Bir döneme tıkla, aşağıdaki sanatçı listesi o döneme süzülsün."}
-          </p>
-        </div>
-      </div>
-      {err ? (
-        <p className="px-5 py-6 text-[13px] text-accent-rose">{err}</p>
-      ) : !ledger || busy ? (
-        <p className="px-5 py-6 text-[13px] text-ink-500">Yükleniyor…</p>
-      ) : periods.length === 0 ? (
-        <p className="px-5 py-6 text-[13px] text-ink-500">Bu label için yayınlanmış dönem yok.</p>
-      ) : (
-        <div className="overflow-x-auto scroll-thin max-h-[420px] overflow-y-auto">
-          <table className="w-full min-w-[720px]">
-            <thead className="bg-ink-900/[0.02] border-b border-line sticky top-0 z-10">
-              <tr>
-                <Th align="left">Dönem</Th>
-                <Th align="right">Hakediş</Th>
-                <Th align="right">Ödenen</Th>
-                <Th align="right">Bekleyen</Th>
-                <Th align="left" className="w-32">Pay</Th>
-                <Th align="center">Sanatçı</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {periods.map((p) => {
-                const secili = p.periodId === periodId;
-                return (
-                  <tr key={p.periodId} className={clsx(secili ? "bg-brand-500/10" : "hover:bg-ink-900/[0.02]")}>
-                    <Td>
-                      <button type="button" onClick={() => onPick(p.periodId)} aria-pressed={secili}
-                        className="font-medium text-ink-900 hover:text-brand-600 text-left">
-                        {p.display}
-                      </button>
-                    </Td>
-                    <Td align="right" className="text-ink-500">{money(p.net)}</Td>
-                    <Td align="right" className="text-brand-600">{p.paid > 0.005 ? money(p.paid) : "—"}</Td>
-                    <Td align="right" className="font-semibold text-ink-900">
-                      {p.remaining > 0.005 ? money(p.remaining) : <span className="text-[11px] font-normal text-brand-600">ödendi</span>}
-                    </Td>
-                    <Td><Bar value={p.net} max={max} color="rgb(var(--c-brand-500))" /></Td>
-                    <Td align="center" className="text-[12px] tabular text-ink-600">{num(p.artistCount)}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-line bg-ink-900/[0.02]">
-              <tr>
-                <Td className="font-semibold text-ink-900">Toplam</Td>
-                <Td align="right" className="font-semibold text-ink-700">{money(sum.net)}</Td>
-                <Td align="right" className="font-semibold text-brand-600">{money(sum.paid)}</Td>
-                <Td align="right" className="font-semibold text-ink-900">{money(sum.rem)}</Td>
-                <Td>{null}</Td>
-                <Td>{null}</Td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </Card>
+    <span className={clsx("inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[11.5px] font-semibold", m.c)}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current" />{m.t}
+    </span>
   );
 }
 
