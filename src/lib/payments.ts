@@ -2,6 +2,7 @@ import { type Currency } from "./types";
 import { query, queryOne, transaction, n } from "./db";
 import { periodDisplay } from "./period";
 import { cachedByVersion } from "./dashboardCache";
+import { paymentLabelsReady } from "./schema";
 
 /* ------------------------------------------------------------------ tipler */
 
@@ -231,8 +232,59 @@ async function breakdownNetCells(): Promise<NetCell[]> {
   });
 }
 
+/**
+ * Sanatçı-dönem ödemesini hücrelere (label × rapor) dağıtır.
+ *   1. Etiketli tutar (payment_period_labels) kendi label'ının hücrelerine,
+ *      o label'ın hücreleri arasında net oranında.
+ *   2. Kalan (etiketsiz) tutar, hücrelerin henüz ödenmemiş neti oranında;
+ *      hepsi ödenmişse (fazla ödeme, negatif satır) net oranında.
+ * Her sanatçı-dönemde hücre ödenenlerinin toplamı = payment_periods toplamı.
+ */
+function labelPaidSplit(
+  cells: NetCell[],
+  paidOf: Map<string, number>,
+  tagOf: Map<string, number>
+): number[] {
+  const groups = new Map<string, number[]>();
+  cells.forEach((c, i) => {
+    const k = c.a + "|" + c.p;
+    const g = groups.get(k);
+    if (g) g.push(i); else groups.set(k, [i]);
+  });
+  const out = new Array<number>(cells.length).fill(0);
+  for (const [k, idxs] of groups) {
+    const total = paidOf.get(k) ?? 0;
+    if (!total) continue;
+    // label → o label'ın hücreleri
+    const byLabel = new Map<string, number[]>();
+    for (const i of idxs) {
+      const l = cells[i].l;
+      const g = byLabel.get(l);
+      if (g) g.push(i); else byLabel.set(l, [i]);
+    }
+    let tagged = 0;
+    for (const [l, li] of byLabel) {
+      const t = Math.min(tagOf.get(k + "|" + l) ?? 0, total - tagged);
+      if (t <= 0) continue;
+      tagged += t;
+      const lnet = li.reduce((a, i) => a + Math.max(cells[i].net, 0), 0);
+      for (const i of li) out[i] += lnet > 0 ? t * (Math.max(cells[i].net, 0) / lnet) : t / li.length;
+    }
+    const rest = total - tagged;
+    if (rest <= 1e-9) continue;
+    const open = idxs.map((i) => Math.max(cells[i].net - out[i], 0));
+    const openSum = open.reduce((a, v) => a + v, 0);
+    const tot = cells[idxs[0]].tot;
+    idxs.forEach((i, j) => {
+      out[i] += openSum > 1e-9 ? rest * (open[j] / openSum) : tot > 0 ? rest * (cells[i].net / tot) : rest / idxs.length;
+    });
+  }
+  return out;
+}
+
 export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
-  const [cells, paidRows, periodRows] = await Promise.all([
+  const tagsReady = await paymentLabelsReady();
+  const [cells, paidRows, periodRows, tagRows] = await Promise.all([
     breakdownNetCells(),
     query<{ a: string; p: string; paid: number }>(
       `select pay.artist_id a, pp.period_id p, sum(pp.amount_usd)::float8 paid
@@ -242,9 +294,18 @@ export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
     query<{ id: string; label: string; sort: number; year: number; month: number | null; quarter: number | null }>(
       `select id, label, sort, year, month, quarter from periods`
     ),
+    tagsReady
+      ? query<{ a: string; p: string; l: string; paid: number }>(
+          `select pay.artist_id a, x.period_id p, x.label_id l, sum(x.amount_usd)::float8 paid
+           from payment_period_labels x join payments pay on pay.id = x.payment_id
+           group by 1, 2, 3`
+        )
+      : Promise.resolve([] as { a: string; p: string; l: string; paid: number }[]),
   ]);
 
   const paidOf = new Map(paidRows.map((r) => [r.a + "|" + r.p, n(r.paid)]));
+  const tagOf = new Map(tagRows.map((r) => [r.a + "|" + r.p + "|" + r.l, n(r.paid)]));
+  const paidByCell = labelPaidSplit(cells, paidOf, tagOf);
   const pInfo = new Map(periodRows.map((r) => [r.id, r]));
   const idx = <K,>(list: K[], map: Map<K, number>, k: K) => {
     let i = map.get(k);
@@ -256,9 +317,9 @@ export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
   const pIds: string[] = [], pI = new Map<string, number>();
   const r4 = (v: number) => Math.round(v * 1e6) / 1e6;
 
-  for (const c of cells) {
-    const paidAll = paidOf.get(c.a + "|" + c.p) ?? 0;
-    const paid = c.tot > 0 ? paidAll * (c.net / c.tot) : 0;
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    const paid = paidByCell[i];
     out.cells.push([
       idx(out.artists, aI, c.a), idx(pIds, pI, c.p),
       idx(out.labels, lI, c.l), idx(out.reports, rI, c.r),
@@ -274,6 +335,81 @@ export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
     };
   });
   return out;
+}
+
+/* ------------------------------------------------------- toplu kapatma */
+
+export interface BulkScope {
+  artistIds: string[];
+  /** boş = tüm label'lar */
+  labelIds: string[];
+  /** boş = tüm ödeme partileri */
+  reportIds: string[];
+}
+
+export interface BulkPlanItem {
+  artistId: string;
+  amountUsd: number;
+  allocations: { periodId: string; amountUsd: number }[];
+  labelSplits: { periodId: string; labelId: string; amountUsd: number }[];
+}
+
+/**
+ * Seçili kapsamdaki (label × parti) kalan tutarları sanatçı bazında ödeme
+ * planına çevirir. Sunucuda, o anki gerçek ödemelerle yeniden hesaplanır —
+ * istemcinin gördüğü rakama güvenilmez. Bir dönemin tutarı, o dönemin genel
+ * kalanını asla aşmaz (fazla ödeme kontrolü recordPayment'ta ayrıca var).
+ */
+export async function planBulkClose(scope: BulkScope): Promise<BulkPlanItem[]> {
+  const bd = await getPaymentBreakdown();
+  const want = new Set(scope.artistIds);
+  const labels = scope.labelIds.length ? new Set(scope.labelIds) : null;
+  const reps = scope.reportIds.length ? new Set(scope.reportIds) : null;
+
+  // sanatçı → dönem → { genel kalan, label → kapsamdaki kalan }
+  const per = new Map<string, Map<string, { total: number; byLabel: Map<string, number> }>>();
+  for (const [ai, pi, li, ri, net, paid] of bd.cells) {
+    const a = bd.artists[ai];
+    if (!want.has(a)) continue;
+    const p = bd.periods[pi].id;
+    const l = bd.labels[li];
+    const r = bd.reports[ri];
+    let m = per.get(a);
+    if (!m) { m = new Map(); per.set(a, m); }
+    let e = m.get(p);
+    if (!e) { e = { total: 0, byLabel: new Map() }; m.set(p, e); }
+    e.total += net - paid;
+    if ((labels && !labels.has(l)) || (reps && !reps.has(r))) continue;
+    e.byLabel.set(l, (e.byLabel.get(l) ?? 0) + (net - paid));
+  }
+
+  const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
+  const plan: BulkPlanItem[] = [];
+  for (const a of scope.artistIds) {
+    const m = per.get(a);
+    if (!m) continue;
+    const item: BulkPlanItem = { artistId: a, amountUsd: 0, allocations: [], labelSplits: [] };
+    for (const [p, e] of m) {
+      const parts = [...e.byLabel].filter(([, v]) => v > 0.005);
+      const want = parts.reduce((s, [, v]) => s + v, 0);
+      const amt = Math.min(want, e.total);
+      if (amt <= 0.005) continue;
+      const k = amt / want; // genel kalan daha azsa label payları orantılı kısılır
+      item.allocations.push({ periodId: p, amountUsd: r6(amt) });
+      for (const [l, v] of parts) item.labelSplits.push({ periodId: p, labelId: l, amountUsd: r6(v * k) });
+      item.amountUsd += amt;
+    }
+    if (item.allocations.length) {
+      // Yuvarlama: label payları toplamı dönem tutarıyla birebir olsun.
+      for (const al of item.allocations) {
+        const sp = item.labelSplits.filter((x) => x.periodId === al.periodId);
+        const diff = r6(al.amountUsd - sp.reduce((s, x) => s + x.amountUsd, 0));
+        if (diff && sp.length) sp[0].amountUsd = r6(sp[0].amountUsd + diff);
+      }
+      plan.push(item);
+    }
+  }
+  return plan;
 }
 
 /* ----------------------------------------------- tek sanatçının cari hesabı */
@@ -431,6 +567,12 @@ export interface RecordPaymentInput {
   paidAt?: string | null;
   /** Ödemeyi kaydeden yönetici — geriye dönük "bunu kim girdi" sorusu için. */
   createdBy?: string | null;
+  /**
+   * İsteğe bağlı: her dönem tutarının label'lara dağılımı (0018). Toplu
+   * kapatma yazar; bir dönemin label tutarlarının toplamı o dönemin
+   * allocation tutarına eşit olmalı.
+   */
+  labelSplits?: { periodId: string; labelId: string; amountUsd: number }[];
 }
 
 export async function recordPayment(input: RecordPaymentInput): Promise<{ id: string }> {
@@ -503,6 +645,17 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
         `insert into payment_periods (payment_id, period_id, amount_usd) values ($1,$2,$3)`,
         [paymentId, a.periodId, a.amountUsd]
       );
+    }
+
+    const splits = (input.labelSplits ?? []).filter((x) => x.amountUsd > 0);
+    if (splits.length && (await paymentLabelsReady())) {
+      for (const x of splits) {
+        await c.query(
+          `insert into payment_period_labels (payment_id, period_id, label_id, amount_usd)
+           values ($1,$2,$3,$4)`,
+          [paymentId, x.periodId, x.labelId, x.amountUsd]
+        );
+      }
     }
 
     // Açık istek varsa kapat

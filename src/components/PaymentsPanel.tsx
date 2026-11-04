@@ -6,7 +6,8 @@ import type { BalanceRow, PaymentBreakdown, PaymentRow, PeriodStatus } from "@/l
 import type { ReportRow } from "@/lib/queries";
 import { foldKey } from "@/lib/normalize";
 import { money, num, amountIn } from "@/lib/format";
-import { Avatar, Bar, Button, Card, Empty, Icon, Td, Th } from "./ui";
+import { Avatar, Bar, Button, Card, Empty, Icon, Modal, Td, Th } from "./ui";
+import { Box, CheckMenu } from "./CheckMenu";
 import type { BankChangeRequestRow } from "@/lib/payments";
 import { CURRENCIES, CURRENCY_LABEL, type Currency } from "@/lib/types";
 
@@ -15,6 +16,14 @@ const dateTr = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
 type Durum = "paid" | "partial" | "unpaid";
+type FiltreKey = "open" | "unpaid" | "requested" | "nobank";
+
+const FILTRELER: { value: FiltreKey; label: string }[] = [
+  { value: "open", label: "Bakiyesi olan" },
+  { value: "unpaid", label: "2+ dönem birikmiş" },
+  { value: "requested", label: "İstek gönderen" },
+  { value: "nobank", label: "IBAN eksik" },
+];
 
 export function PaymentsPanel({
   initial, labels = [], reports = [],
@@ -24,12 +33,14 @@ export function PaymentsPanel({
   reports?: ReportRow[];
 }) {
   const [rows, setRows] = useState(initial);
-  const [labelId, setLabelId] = useState("");
-  const [reportId, setReportId] = useState("");
+  const [labelIds, setLabelIds] = useState<string[]>([]);
+  const [reportIds, setReportIds] = useState<string[]>([]);
   const [bd, setBd] = useState<PaymentBreakdown | null>(null);
   const [bdErr, setBdErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "open" | "unpaid" | "requested" | "nobank">("all");
+  const [filters, setFilters] = useState<FiltreKey[]>([]);
+  const [secili, setSecili] = useState<Set<string>>(new Set());
+  const [topluAcik, setTopluAcik] = useState(false);
   const [openArtist, setOpenArtist] = useState<BalanceRow | null>(null);
   const [bankArtist, setBankArtist] = useState<BalanceRow | null>(null);
 
@@ -41,7 +52,7 @@ export function PaymentsPanel({
     setBd(null);
   }, []);
 
-  const kapsamli = !!(labelId || reportId);
+  const kapsamli = labelIds.length > 0 || reportIds.length > 0;
 
   // Label veya parti ilk seçildiğinde kırılımı al (tüm label/partiler tek seferde).
   useEffect(() => {
@@ -62,12 +73,14 @@ export function PaymentsPanel({
   const partiler = useMemo(
     () => reports
       .filter((r) => r.status !== "draft")
-      .sort((a, b) => b.periodSort - a.periodSort || b.createdAt.localeCompare(a.createdAt)),
+      // createdAt sunucudan bazen Date nesnesi olarak gelir — string sanma.
+      .sort((a, b) =>
+        b.periodSort - a.periodSort ||
+        (Date.parse(String(b.createdAt)) || 0) - (Date.parse(String(a.createdAt)) || 0)),
     [reports]
   );
-  const partiAdi = (r: ReportRow) => r.periodDisplay || r.periodRange || r.title;
-  const labelName = labels.find((l) => l.id === labelId)?.name ?? "";
-  const parti = partiler.find((r) => r.id === reportId) ?? null;
+  const partiAdi = (r: ReportRow) =>
+    [r.periodDisplay, r.periodRange, r.title].find((x) => x && x !== "—") ?? "—";
 
   /**
    * Label ve/veya ödeme partisi seçiliyken her sanatçının rakamları o kapsama
@@ -78,17 +91,14 @@ export function PaymentsPanel({
     const durum = new Map<string, Durum>();
     if (!kapsamli) return { scoped: rows, durum, kapsamToplam: null };
     if (!bd) return { scoped: [] as BalanceRow[], durum, kapsamToplam: null };
-    const li = labelId ? bd.labels.indexOf(labelId) : -1;
-    const ri = reportId ? bd.reports.indexOf(reportId) : -1;
-    if ((labelId && li < 0) || (reportId && ri < 0)) {
-      return { scoped: [] as BalanceRow[], durum, kapsamToplam: { earned: 0, paid: 0, balance: 0 } };
-    }
+    const li = labelIds.length ? new Set(labelIds.map((x) => bd.labels.indexOf(x))) : null;
+    const ri = reportIds.length ? new Set(reportIds.map((x) => bd.reports.indexOf(x))) : null;
     // sanatçı → dönem → [net, ödenen]
     const by = new Map<number, Map<number, [number, number]>>();
     const t = { earned: 0, paid: 0, balance: 0 };
     for (const [a, p, l, r, net, paid] of bd.cells) {
-      if (li >= 0 && l !== li) continue;
-      if (ri >= 0 && r !== ri) continue;
+      if (li && !li.has(l)) continue;
+      if (ri && !ri.has(r)) continue;
       let m = by.get(a);
       if (!m) { m = new Map(); by.set(a, m); }
       const v = m.get(p) ?? [0, 0];
@@ -124,24 +134,30 @@ export function PaymentsPanel({
     }
     out.sort((x, y) => y.balance - x.balance || y.earned - x.earned);
     return { scoped: out, durum, kapsamToplam: t };
-  }, [rows, kapsamli, bd, labelId, reportId]);
+  }, [rows, kapsamli, bd, labelIds, reportIds]);
 
+  const ad = (ids: string[], all: string, name: (id: string) => string | undefined, unit: string) =>
+    ids.length === 0 ? all : ids.length === 1 ? name(ids[0]) ?? all : `${ids.length} ${unit}`;
   const kapsamYazisi = kapsamli
-    ? [labelName || "Tüm label'lar", parti ? partiAdi(parti) : "tüm partiler"].join(" · ")
+    ? [
+        ad(labelIds, "Tüm label'lar", (id) => labels.find((l) => l.id === id)?.name, "label"),
+        ad(reportIds, "tüm partiler", (id) => { const r = partiler.find((x) => x.id === id); return r && partiAdi(r); }, "parti"),
+      ].join(" · ")
     : "tüm dönemler, net";
   const baseRow = (r: BalanceRow) => rows.find((x) => x.artistId === r.artistId) ?? r;
 
   const list = useMemo(() => {
     const k = foldKey(q);
+    const f = new Set(filters);
     return scoped.filter((r) => {
       if (k && !foldKey(r.artistName).includes(k)) return false;
-      if (filter === "open") return r.balance > 0.005;
-      if (filter === "unpaid") return r.unpaidPeriods >= 2;
-      if (filter === "requested") return r.hasOpenRequest;
-      if (filter === "nobank") return r.balance > 0.005 && !r.bank?.iban;
+      if (f.has("open") && !(r.balance > 0.005)) return false;
+      if (f.has("unpaid") && !(r.unpaidPeriods >= 2)) return false;
+      if (f.has("requested") && !r.hasOpenRequest) return false;
+      if (f.has("nobank") && !(r.balance > 0.005 && !r.bank?.iban)) return false;
       return true;
     });
-  }, [scoped, q, filter]);
+  }, [scoped, q, filters]);
 
   const totals = useMemo(
     () => ({
@@ -156,6 +172,7 @@ export function PaymentsPanel({
     [scoped, kapsamToplam]
   );
 
+  const yuk = kapsamli && !bd;
   const maxBalance = Math.max(...scoped.map((r) => r.balance), 0);
   const durumSay = useMemo(() => {
     const c = { paid: 0, partial: 0, unpaid: 0 };
@@ -163,12 +180,26 @@ export function PaymentsPanel({
     return c;
   }, [durum]);
 
+  /* ---- toplu seçim: yalnızca listede görünen VE bakiyesi olan sanatçılar */
+  const secilebilir = list.filter((r) => r.balance > 0.005);
+  const seciliSatirlar = secilebilir.filter((r) => secili.has(r.artistId));
+  const hepsi = secilebilir.length > 0 && seciliSatirlar.length === secilebilir.length;
+  const biraz = seciliSatirlar.length > 0 && !hepsi;
+  const seciliToplam = seciliSatirlar.reduce((a, r) => a + r.balance, 0);
+  const hepsiniSec = () =>
+    setSecili(hepsi ? new Set() : new Set(secilebilir.map((r) => r.artistId)));
+  const tekSec = (id: string) =>
+    setSecili((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // Kapsam değişince seçim sıfırlansın — başka kapsamın tutarıyla kapatma yapılmasın.
+  useEffect(() => { setSecili(new Set()); }, [labelIds, reportIds]);
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Toplam hakediş" value={money(totals.earned)} sub={kapsamYazisi} />
-        <Stat label="Ödenen" value={money(totals.paid)} tone="brand" />
-        <Stat label="Bekleyen bakiye" value={money(totals.balance)} tone="amber"
+        <Stat label="Toplam hakediş" value={yuk ? "…" : money(totals.earned)} sub={kapsamYazisi} />
+        <Stat label="Ödenen" value={yuk ? "…" : money(totals.paid)} tone="brand" />
+        <Stat label="Bekleyen bakiye" value={yuk ? "…" : money(totals.balance)} tone="amber"
           sub={`${num(scoped.filter((r) => r.balance > 0.005).length)} sanatçı`} />
         <Stat label="Ödeme isteği" value={num(totals.requests)} tone={totals.requests ? "rose" : "muted"}
           sub={totals.requests ? "yanıt bekliyor" : "bekleyen yok"} />
@@ -181,7 +212,7 @@ export function PaymentsPanel({
             Bakiyesi olan <b>{num(totals.noBank)}</b> sanatçının IBAN bilgisi eksik. Ödeme yapmadan
             önce banka bilgilerini girmen gerekiyor.
           </p>
-          <button type="button" onClick={() => setFilter("nobank")}
+          <button type="button" onClick={() => setFilters(["nobank"])}
             className="ml-auto shrink-0 min-h-[32px] px-3 rounded-full text-[12px] font-semibold bg-amber-100 text-amber-900 hover:brightness-95 transition">
             Eksikleri göster
           </button>
@@ -190,7 +221,7 @@ export function PaymentsPanel({
 
       <Card pad={false}>
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink-900">Sanatçı Bakiyeleri</h3>
             <p className="text-[12.5px] text-ink-500 mt-0.5">
               {kapsamli && <>{kapsamYazisi} · </>}
@@ -199,53 +230,60 @@ export function PaymentsPanel({
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Sanatçı ara…"
-              className="h-9 rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 w-44"
-            />
+            <div className="relative">
+              <Icon name="search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Sanatçı ara…"
+                aria-label="Sanatçı ara"
+                className="h-9 rounded-xl border border-line bg-card pl-9 pr-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 w-48"
+              />
+            </div>
             {labels.length > 0 && (
-              <select value={labelId} onChange={(e) => setLabelId(e.target.value)} aria-label="Label"
-                className="h-9 rounded-xl text-[13px] max-w-[190px]">
-                <option value="">Tüm label&apos;lar</option>
-                {labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
+              <CheckMenu
+                icon="tag"
+                allLabel="Tüm label'lar"
+                unit="label"
+                title="Label"
+                options={labels.map((l) => ({ value: l.id, label: l.name }))}
+                selected={labelIds}
+                onChange={setLabelIds}
+                width={240}
+              />
             )}
             {partiler.length > 0 && (
-              <select value={reportId} onChange={(e) => setReportId(e.target.value)} aria-label="Ödeme partisi"
-                className="h-9 rounded-xl text-[13px] max-w-[220px]">
-                <option value="">Tüm ödeme partileri</option>
-                {partiler.map((r) => <option key={r.id} value={r.id}>{partiAdi(r)}</option>)}
-              </select>
+              <CheckMenu
+                icon="clock"
+                allLabel="Tüm ödeme partileri"
+                unit="parti"
+                title="Ödeme partisi"
+                options={partiler.map((r) => ({ value: r.id, label: partiAdi(r), hint: money(r.received) }))}
+                selected={reportIds}
+                onChange={setReportIds}
+                width={290}
+              />
             )}
-            {([
-              ["all", "Tümü"],
-              ["open", "Bakiyesi olan"],
-              ["unpaid", "2+ dönem birikmiş"],
-              ["requested", "İstek gönderen"],
-              ["nobank", "IBAN eksik"],
-            ] as const).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setFilter(k)}
-                className={clsx(
-                  "min-h-[34px] px-3.5 rounded-full text-[12.5px] font-medium transition-colors",
-                  filter === k ? "bg-brand-500 text-white" : "bg-ink-900/[0.04] text-ink-700 hover:bg-ink-900/[0.08]"
-                )}
-              >
-                {label}
-              </button>
-            ))}
+            <CheckMenu
+              icon="sliders"
+              allLabel="Filtre"
+              unit="filtre"
+              title="Göster"
+              options={FILTRELER}
+              selected={filters}
+              onChange={(v) => setFilters(v as FiltreKey[])}
+              align="right"
+              width={230}
+              badge
+            />
           </div>
         </div>
 
-        {reportId && bd && (
+        {reportIds.length > 0 && bd && (
           <div className="px-5 py-2.5 border-b border-line flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-600">
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-brand-500" />Ödendi <b className="text-ink-900 tabular">{num(durumSay.paid)}</b></span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent-sun" />Kısmen <b className="text-ink-900 tabular">{num(durumSay.partial)}</b></span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent-warn" />Ödenmedi <b className="text-ink-900 tabular">{num(durumSay.unpaid)}</b></span>
-            <span className="text-ink-400">Ödemeler dönem bazında kaydedildiği için bir sanatçının aynı aydaki birden fazla label geliri varsa ödenen, gelir oranında bölünür.</span>
           </div>
         )}
         {kapsamli && !bd ? (
@@ -254,9 +292,16 @@ export function PaymentsPanel({
           <Empty title="Kayıt yok" sub="Filtreyi değiştirmeyi dene." icon={<Icon name="wallet" />} />
         ) : (
           <div className="overflow-x-auto scroll-thin">
-            <table className="w-full min-w-[980px]">
+            <table className="w-full min-w-[1020px]">
               <thead className="bg-ink-900/[0.02] border-b border-line">
                 <tr>
+                  <Th align="left" className="w-10">
+                    <button type="button" onClick={hepsiniSec} disabled={secilebilir.length === 0}
+                      aria-label={hepsi ? "Seçimi kaldır" : "Bakiyesi olanların hepsini seç"}
+                      className="flex items-center disabled:opacity-40">
+                      <Box checked={hepsi} partial={biraz} />
+                    </button>
+                  </Th>
                   <Th align="left">Sanatçı</Th>
                   <Th align="right">Hakediş</Th>
                   <Th align="right">Ödenen</Th>
@@ -269,8 +314,19 @@ export function PaymentsPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {list.map((r) => (
-                  <tr key={r.artistId} className="hover:bg-ink-900/[0.02]">
+                {list.map((r) => {
+                  const sec = secili.has(r.artistId);
+                  const olur = r.balance > 0.005;
+                  return (
+                  <tr key={r.artistId} className={clsx(sec ? "bg-brand-500/[0.06]" : "hover:bg-ink-900/[0.02]")}>
+                    <Td>
+                      <button type="button" onClick={() => olur && tekSec(r.artistId)} disabled={!olur}
+                        aria-label={`${r.artistName} — toplu kapatmaya ${sec ? "dahil değil" : "ekle"}`}
+                        aria-pressed={sec}
+                        className="flex items-center disabled:opacity-30">
+                        <Box checked={sec} />
+                      </button>
+                    </Td>
                     <Td>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={r.artistName} size={30} />
@@ -285,10 +341,10 @@ export function PaymentsPanel({
                       </div>
                     </Td>
                     <Td align="right" className="text-ink-500">{money(r.earned)}</Td>
-                    <Td align="right" className="text-brand-600">{r.paid ? money(r.paid) : "—"}</Td>
+                    <Td align="right" className="text-brand-600">{r.paid > 0.005 ? money(r.paid) : "—"}</Td>
                     <Td align="right" className="font-semibold text-ink-900">{money(r.balance)}</Td>
                     <Td>
-                      {reportId && durum.get(r.artistId) ? (
+                      {reportIds.length > 0 && durum.get(r.artistId) ? (
                         <DurumRozet d={durum.get(r.artistId)!} />
                       ) : (
                         <Bar value={r.balance} max={maxBalance} color="rgb(var(--c-brand-500))" />
@@ -321,24 +377,56 @@ export function PaymentsPanel({
                       <div className="flex items-center justify-end gap-2">
                         <button type="button" onClick={() => setBankArtist(baseRow(r))}
                           aria-label={`${r.artistName} — banka bilgileri`}
-                          className="min-h-[34px] px-3 rounded-full border border-line text-[12px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
+                          className="min-h-[34px] px-3 rounded-full border border-line text-[12px] font-semibold whitespace-nowrap text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
                           Banka
                         </button>
                         <button type="button" onClick={() => setOpenArtist(baseRow(r))}
                           aria-label={`${r.artistName} — cari hesap ve ödeme kaydı`}
-                          className="min-h-[34px] px-3 rounded-full bg-brand-500/15 text-brand-700 text-[12px] font-semibold hover:bg-brand-500 hover:text-white transition-colors">
+                          className="min-h-[34px] px-3 rounded-full bg-brand-500/15 text-brand-700 text-[12px] font-semibold whitespace-nowrap hover:bg-brand-500 hover:text-white transition-colors">
                           Cari hesap
                         </button>
                       </div>
                     </Td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </Card>
 
+      {seciliSatirlar.length > 0 && (
+        <div className="sticky bottom-4 z-20 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto rounded-full bg-card border border-line shadow-pop pl-5 pr-2 py-2 flex items-center gap-4 rise">
+            <p className="text-[13px] text-ink-700">
+              <b className="text-ink-900 tabular">{num(seciliSatirlar.length)}</b> sanatçı ·{" "}
+              <b className="text-ink-900 tabular">{money(seciliToplam)}</b>
+              <span className="text-ink-400"> · {kapsamYazisi}</span>
+            </p>
+            <button type="button" onClick={() => setSecili(new Set())}
+              className="text-[12.5px] text-ink-500 hover:text-ink-900 transition-colors">
+              Seçimi temizle
+            </button>
+            <button type="button" onClick={() => setTopluAcik(true)}
+              className="h-9 px-4 rounded-full bg-brand-500 text-white text-[13px] font-semibold hover:bg-brand-600 transition-colors inline-flex items-center gap-2">
+              <Icon name="check" size={15} strokeWidth={2.4} />
+              Ödendi olarak kapat
+            </button>
+          </div>
+        </div>
+      )}
+
+      {topluAcik && (
+        <BulkCloseDialog
+          satirlar={seciliSatirlar}
+          kapsam={kapsamYazisi}
+          labelIds={labelIds}
+          reportIds={reportIds}
+          onClose={() => setTopluAcik(false)}
+          onDone={async () => { setSecili(new Set()); await refresh(); }}
+        />
+      )}
       {openArtist && (
         <LedgerDrawer artist={openArtist} onClose={() => setOpenArtist(null)} onChanged={refresh} />
       )}
@@ -349,6 +437,203 @@ export function PaymentsPanel({
   );
 }
 
+/* ------------------------------------------------------- toplu kapatma */
+
+type PlanSatir = { artistId: string; amountUsd: number; periods: number; currency: Currency; hasIban: boolean };
+type Sonuc = { artistId: string; ok: boolean; amountUsd: number; error?: string };
+
+function BulkCloseDialog({
+  satirlar, kapsam, labelIds, reportIds, onClose, onDone,
+}: {
+  satirlar: BalanceRow[];
+  kapsam: string;
+  labelIds: string[];
+  reportIds: string[];
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const [plan, setPlan] = useState<PlanSatir[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sonuc, setSonuc] = useState<Sonuc[] | null>(null);
+  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10));
+  const [not, setNot] = useState("");
+  const [kurlar, setKurlar] = useState<Partial<Record<Currency, string>>>({});
+  const adOf = new Map(satirlar.map((r) => [r.artistId, r.artistName]));
+  const govde = { artistIds: satirlar.map((r) => r.artistId), labelIds, reportIds };
+
+  // Sunucudaki planı al: tutarlar o anki gerçek ödemelerle yeniden hesaplanır.
+  useEffect(() => {
+    let iptal = false;
+    fetch("/api/payments/bulk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...govde, dryRun: true }),
+    })
+      .then(async (r) => {
+        const j = await r.json();
+        if (iptal) return;
+        if (!r.ok || !j.plan) throw new Error(j.error || "Plan alınamadı.");
+        setPlan(j.plan);
+      })
+      .catch((e) => { if (!iptal) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { iptal = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dovizler = [...new Set((plan ?? []).map((p) => p.currency).filter((c) => c !== "USD"))];
+  const kurEksik = dovizler.some((c) => !(Number(kurlar[c]?.replace(",", ".")) > 0));
+  const toplam = (plan ?? []).reduce((a, p) => a + p.amountUsd, 0);
+  const ibansiz = (plan ?? []).filter((p) => !p.hasIban).length;
+
+  const kaydet = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const rates = Object.fromEntries(dovizler.map((c) => [c, Number(kurlar[c]!.replace(",", "."))]));
+      const r = await fetch("/api/payments/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...govde, paidAt: tarih, note: not, rates }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.results) throw new Error(j.error || "Kaydedilemedi.");
+      setSonuc(j.results);
+      await onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const basarili = (sonuc ?? []).filter((s) => s.ok);
+  const hatali = (sonuc ?? []).filter((s) => !s.ok);
+
+  return (
+    <Modal
+      open
+      onClose={busy ? () => {} : onClose}
+      title={sonuc ? "Toplu kapatma tamamlandı" : "Ödendi olarak kapat"}
+      sub={kapsam}
+      width={600}
+      footer={
+        <div className="flex items-center gap-3">
+          {sonuc ? (
+            <Button className="ml-auto" onClick={onClose}>Kapat</Button>
+          ) : (
+            <>
+              <p className="text-[12px] text-ink-500 mr-auto">
+                Her sanatçı için ayrı bir ödeme kaydı oluşur; cari hesaptan tek tek geri alınabilir.
+              </p>
+              <button type="button" onClick={onClose} disabled={busy}
+                className="h-9 px-4 rounded-full text-[13px] font-medium text-ink-600 hover:bg-ink-900/[0.05] transition-colors">
+                Vazgeç
+              </button>
+              <button type="button" onClick={kaydet} disabled={busy || !plan || plan.length === 0 || kurEksik}
+                className="h-9 px-4 rounded-full bg-brand-500 text-white text-[13px] font-semibold whitespace-nowrap hover:bg-brand-600 transition-colors disabled:opacity-40">
+                {busy ? "Kaydediliyor…" : plan ? `${num(plan.length)} ödemeyi kaydet · ${money(toplam)}` : "Hazırlanıyor…"}
+              </button>
+            </>
+          )}
+        </div>
+      }
+    >
+      {sonuc ? (
+        <div className="space-y-3">
+          <p className="text-[13.5px] text-ink-700">
+            <b className="text-ink-900">{num(basarili.length)}</b> sanatçının ödemesi kaydedildi ·{" "}
+            <b className="text-ink-900">{money(basarili.reduce((a, s) => a + s.amountUsd, 0))}</b>
+          </p>
+          {hatali.length > 0 && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-3">
+              <p className="text-[12.5px] font-semibold text-accent-rose mb-1.5">{num(hatali.length)} kayıt yapılamadı</p>
+              <ul className="space-y-1">
+                {hatali.map((h) => (
+                  <li key={h.artistId} className="text-[12.5px] text-ink-700">
+                    <b>{adOf.get(h.artistId) ?? h.artistId}</b> — {h.error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : err && !plan ? (
+        <p className="text-[13px] text-accent-rose">{err}</p>
+      ) : !plan ? (
+        <p className="text-[13px] text-ink-500">Tutarlar hesaplanıyor…</p>
+      ) : plan.length === 0 ? (
+        <p className="text-[13px] text-ink-500">Seçili sanatçıların bu kapsamda kapatılacak bakiyesi yok.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Ödeme tarihi</span>
+              <input type="date" value={tarih} onChange={(e) => setTarih(e.target.value)}
+                className="h-10 w-full rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20" />
+            </label>
+            <label className="block">
+              <span className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Not</span>
+              <input value={not} onChange={(e) => setNot(e.target.value)} placeholder="Opsiyonel — ör. Ekim transferi"
+                className="h-10 w-full rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20" />
+            </label>
+            {dovizler.map((c) => (
+              <label key={c} className="block">
+                <span className="block text-[11.5px] font-medium text-ink-400 mb-1.5">Kur · 1 USD = ? {c}</span>
+                <input inputMode="decimal" value={kurlar[c] ?? ""} placeholder="zorunlu"
+                  onChange={(e) => setKurlar((k) => ({ ...k, [c]: e.target.value }))}
+                  className="h-10 w-full rounded-xl border border-line bg-card px-3 text-[13px] text-ink-900 tabular placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20" />
+              </label>
+            ))}
+          </div>
+
+          {ibansiz > 0 && (
+            <p className="text-[12.5px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <b>{num(ibansiz)}</b> sanatçının IBAN bilgisi eksik. Ödemeyi başka yoldan yaptıysan yine de kaydedebilirsin.
+            </p>
+          )}
+
+          <div className="rounded-xl border border-line overflow-hidden">
+            <div className="max-h-[260px] overflow-y-auto scroll-thin">
+              <table className="w-full">
+                <thead className="bg-ink-900/[0.02] border-b border-line sticky top-0">
+                  <tr>
+                    <Th align="left">Sanatçı</Th>
+                    <Th align="center">Dönem</Th>
+                    <Th align="right">Tutar</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {plan.map((p) => {
+                    const kur = Number(kurlar[p.currency]?.replace(",", "."));
+                    return (
+                      <tr key={p.artistId}>
+                        <Td>
+                          <span className="font-medium text-ink-900">{adOf.get(p.artistId) ?? "—"}</span>
+                          {!p.hasIban && <span className="ml-2 text-[10.5px] font-semibold text-accent-warn">IBAN eksik</span>}
+                        </Td>
+                        <Td align="center" className="text-[12px] tabular text-ink-600">{num(p.periods)}</Td>
+                        <Td align="right" className="tabular">
+                          <span className="font-semibold text-ink-900">{money(p.amountUsd)}</span>
+                          {p.currency !== "USD" && (
+                            <span className="block text-[11px] text-ink-400">
+                              {kur > 0 ? amountIn(p.amountUsd * kur, p.currency) : `${p.currency} · kur bekleniyor`}
+                            </span>
+                          )}
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {err && <p className="text-[12.5px] text-accent-rose">{err}</p>}
+        </div>
+      )}
+    </Modal>
+  );
+}
 /* ------------------------------------------------------------ cari hesap */
 
 function LedgerDrawer({

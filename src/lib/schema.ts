@@ -125,3 +125,27 @@ export async function songSplitsReady(): Promise<boolean> {
   }
   return songSplitsCache.ready;
 }
+
+/* ------------------------------------------- ödemelerde label izi (0018) */
+
+let payLabelsCache: { ready: boolean; at: number } | null = null;
+
+/**
+ * payment_period_labels tablosu (0018) kurulu mu? Kurulu değilse toplu
+ * kapatma label izi yazmaz, kırılım ödemeyi eskisi gibi orantılı böler.
+ */
+export async function paymentLabelsReady(): Promise<boolean> {
+  const now = Date.now();
+  if (payLabelsCache && (payLabelsCache.ready || now - payLabelsCache.at < RETRY_MS)) {
+    return payLabelsCache.ready;
+  }
+  try {
+    const row = await queryOne<{ t: string | null }>(
+      `select to_regclass('public.payment_period_labels')::text as t`
+    );
+    payLabelsCache = { ready: !!row?.t, at: now };
+  } catch {
+    payLabelsCache = { ready: false, at: now };
+  }
+  return payLabelsCache.ready;
+}
