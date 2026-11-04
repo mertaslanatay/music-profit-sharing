@@ -2,7 +2,7 @@ import { type Currency } from "./types";
 import { query, queryOne, transaction, n } from "./db";
 import { periodDisplay } from "./period";
 import { cachedByVersion } from "./dashboardCache";
-import { paymentLabelsReady } from "./schema";
+import { paymentBatchesReady, paymentLabelsReady } from "./schema";
 
 /* ------------------------------------------------------------------ tipler */
 
@@ -146,7 +146,11 @@ export async function listBalances(): Promise<BalanceRow[]> {
             op.month oldest_month, op.quarter oldest_quarter
      from v_artist_balance b
      left join artist_bank_accounts k on k.artist_id = b.artist_id
-     left join periods op on op.sort = b.oldest_unpaid_sort
+     -- Aynı sort'a sahip birden fazla dönem olsa bile sanatçı tek satır kalsın.
+     left join lateral (
+       select label, year, month, quarter from periods
+       where sort = b.oldest_unpaid_sort order by label limit 1
+     ) op on true
      where b.earned > 0 or b.paid > 0
      order by b.balance desc, b.earned desc`
   );
@@ -236,8 +240,9 @@ async function breakdownNetCells(): Promise<NetCell[]> {
  * Sanatçı-dönem ödemesini hücrelere (label × rapor) dağıtır.
  *   1. Etiketli tutar (payment_period_labels) kendi label'ının hücrelerine,
  *      o label'ın hücreleri arasında net oranında.
- *   2. Kalan (etiketsiz) tutar, hücrelerin henüz ödenmemiş neti oranında;
- *      hepsi ödenmişse (fazla ödeme, negatif satır) net oranında.
+ *   2. Kalan (etiketsiz: tekil/eski ödemeler) tutar hücrelere NET oranında —
+ *      0018'den önceki kuralla birebir. Toplu kapatma planı da bu kurala göre
+ *      "label'ın kalanını" hesapladığı için ikisi birbirini tutar.
  * Her sanatçı-dönemde hücre ödenenlerinin toplamı = payment_periods toplamı.
  */
 function labelPaidSplit(
@@ -271,13 +276,65 @@ function labelPaidSplit(
       for (const i of li) out[i] += lnet > 0 ? t * (Math.max(cells[i].net, 0) / lnet) : t / li.length;
     }
     const rest = total - tagged;
-    if (rest <= 1e-9) continue;
-    const open = idxs.map((i) => Math.max(cells[i].net - out[i], 0));
-    const openSum = open.reduce((a, v) => a + v, 0);
+    if (Math.abs(rest) <= 1e-9) continue;
     const tot = cells[idxs[0]].tot;
-    idxs.forEach((i, j) => {
-      out[i] += openSum > 1e-9 ? rest * (open[j] / openSum) : tot > 0 ? rest * (cells[i].net / tot) : rest / idxs.length;
-    });
+    for (const i of idxs) out[i] += tot > 0 ? rest * (cells[i].net / tot) : rest / idxs.length;
+  }
+  return out;
+}
+
+/**
+ * Tek sanatçının dönem × label kalanları (ödemelerin label izi dahil).
+ * Label izi verilmeyen her yeni ödeme bununla otomatik etiketlenir; böylece
+ * etiketsiz kalan yalnızca 0018'den önceki ödemeler olur ve onların "net
+ * oranında" bölünmesi doğru kalır.
+ */
+async function artistLabelRemaining(artistId: string): Promise<Map<string, Map<string, { net: number; rem: number }>>> {
+  const all = await breakdownNetCells();
+  const cells = all.filter((c) => c.a === artistId);
+  const [paidRows, tagRows] = await Promise.all([
+    query<{ p: string; paid: number }>(
+      `select pp.period_id p, sum(pp.amount_usd)::float8 paid
+       from payment_periods pp join payments pay on pay.id = pp.payment_id
+       where pay.artist_id = $1 group by 1`, [artistId]),
+    query<{ p: string; l: string; paid: number }>(
+      `select x.period_id p, x.label_id l, sum(x.amount_usd)::float8 paid
+       from payment_period_labels x join payments pay on pay.id = x.payment_id
+       where pay.artist_id = $1 group by 1, 2`, [artistId]),
+  ]);
+  const paidOf = new Map(paidRows.map((r) => [artistId + "|" + r.p, n(r.paid)]));
+  const tagOf = new Map(tagRows.map((r) => [artistId + "|" + r.p + "|" + r.l, n(r.paid)]));
+  const paid = labelPaidSplit(cells, paidOf, tagOf);
+  const out = new Map<string, Map<string, { net: number; rem: number }>>();
+  cells.forEach((c, i) => {
+    let m = out.get(c.p);
+    if (!m) { m = new Map(); out.set(c.p, m); }
+    const v = m.get(c.l) ?? { net: 0, rem: 0 };
+    v.net += c.net; v.rem += c.net - paid[i];
+    m.set(c.l, v);
+  });
+  return out;
+}
+
+/** Ödenen tutarı label'lara kalanları oranında böler (hepsi kapalıysa net oranında). */
+export async function autoLabelSplits(
+  artistId: string,
+  allocations: { periodId: string; amountUsd: number }[]
+): Promise<{ periodId: string; labelId: string; amountUsd: number }[]> {
+  const rem = await artistLabelRemaining(artistId);
+  const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
+  const out: { periodId: string; labelId: string; amountUsd: number }[] = [];
+  for (const a of allocations) {
+    const m = rem.get(a.periodId);
+    if (!m || m.size === 0) continue;
+    const parts = [...m].map(([l, v]) => [l, Math.max(v.rem, 0), Math.max(v.net, 0)] as const);
+    const remSum = parts.reduce((s, x) => s + x[1], 0);
+    const netSum = parts.reduce((s, x) => s + x[2], 0);
+    const w = remSum > 1e-9 ? parts.map((x) => x[1] / remSum) : netSum > 0 ? parts.map((x) => x[2] / netSum) : parts.map(() => 1 / parts.length);
+    const sp = parts.map(([l], i) => ({ periodId: a.periodId, labelId: l, amountUsd: r6(a.amountUsd * w[i]) }));
+    const diff = r6(a.amountUsd - sp.reduce((s, x) => s + x.amountUsd, 0));
+    if (diff && sp.length) sp[0].amountUsd = r6(sp[0].amountUsd + diff);
+    out.push(...sp.filter((x) => x.amountUsd > 0));
   }
   return out;
 }
@@ -410,6 +467,119 @@ export async function planBulkClose(scope: BulkScope): Promise<BulkPlanItem[]> {
     }
   }
   return plan;
+}
+
+/* ------------------------------------------------ toplu işlem kaydı */
+
+export interface BatchRow {
+  id: string;
+  createdAt: string;
+  scopeText: string;
+  note: string | null;
+  paidAt: string | null;
+  revertedAt: string | null;
+  /** İşlem anında kaydedilen ödeme sayısı ve toplamı. */
+  count: number;
+  amountUsd: number;
+  /** İşlemde hâlâ duran (geri alınmamış) ödeme sayısı ve toplamı. */
+  active: number;
+  activeUsd: number;
+  /** Kilitli partiye dokunduğu için geri alınamayacak ödeme sayısı. */
+  locked: number;
+  createdByName: string | null;
+}
+
+export async function createBatch(input: {
+  createdBy: string | null; labelIds: string[]; reportIds: string[];
+  scopeText: string; note: string | null; paidAt: string | null;
+}): Promise<string | null> {
+  if (!(await paymentBatchesReady())) return null;
+  const r = await queryOne<{ id: string }>(
+    `insert into payment_batches (created_by, label_ids, report_ids, scope_text, note, paid_at)
+     values ($1, $2::uuid[], $3::uuid[], $4, $5, $6) returning id`,
+    [input.createdBy, input.labelIds, input.reportIds, input.scopeText.slice(0, 300), input.note, input.paidAt]
+  );
+  return r?.id ?? null;
+}
+
+/** Toplu kapatma bitince işlem satırına toplamı yaz. */
+export async function finishBatch(batchId: string, count: number, amountUsd: number): Promise<void> {
+  await query(`update payment_batches set payment_count = $2, amount_usd = $3 where id = $1`, [batchId, count, amountUsd]);
+}
+
+/** Ödemesi kilitli bir partinin dönemine dokunan ödemeler — geri alınamaz. */
+const LOCKED_SQL = `exists (
+  select 1 from payment_periods pp
+  join report_periods rp on rp.period_id = pp.period_id
+  join reports rr on rr.id = rp.report_id
+  where pp.payment_id = p.id and rr.status = 'locked')`;
+
+export async function listBatches(limit = 30): Promise<BatchRow[]> {
+  if (!(await paymentBatchesReady())) return [];
+  const rows = await query<{
+    id: string; created_at: string; scope_text: string; note: string | null;
+    paid_at: string | null; reverted_at: string | null;
+    payment_count: number; amount_usd: number;
+    active: number; active_usd: number; locked: number; by_name: string | null;
+  }>(
+    `select b.id, b.created_at, b.scope_text, b.note, b.paid_at, b.reverted_at,
+            b.payment_count, b.amount_usd::float8 amount_usd,
+            count(p.id)::int active,
+            coalesce(sum(p.amount_usd), 0)::float8 active_usd,
+            count(p.id) filter (where ${LOCKED_SQL})::int locked,
+            nullif(trim(coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, '')), '') by_name
+     from payment_batches b
+     left join payments p on p.batch_id = b.id
+     left join users u on u.id = b.created_by
+     group by b.id, u.first_name, u.last_name
+     order by b.created_at desc
+     limit $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    id: r.id, createdAt: r.created_at, scopeText: r.scope_text, note: r.note,
+    paidAt: r.paid_at, revertedAt: r.reverted_at,
+    count: r.payment_count, amountUsd: n(r.amount_usd),
+    active: r.active, activeUsd: n(r.active_usd), locked: r.locked, createdByName: r.by_name,
+  }));
+}
+
+/**
+ * Toplu işlemi geri al: işlemin hâlâ duran ödemelerini deletePayment ile
+ * siler (dönemler tekrar ödenmemiş sayılır, label izi cascade ile gider,
+ * kapattığı istek yeniden açılır). Kilitli partiye dokunan ödeme korunur.
+ * Ödemelerin tamamı gidince işlem "geri alındı" olarak işaretlenir.
+ */
+export async function revertBatch(batchId: string, by: string | null): Promise<{
+  reverted: { paymentId: string; artistId: string; amountUsd: number; paidAmount: number; currency: Currency }[];
+  locked: number;
+}> {
+  if (!(await paymentBatchesReady())) throw new Error("Toplu işlem kaydı henüz kurulmadı.");
+  const exists = await queryOne(`select 1 from payment_batches where id = $1`, [batchId]);
+  if (!exists) throw new Error("İşlem bulunamadı.");
+  const pays = await query<{
+    id: string; artist_id: string; amount_usd: number; paid_amount: number;
+    paid_currency: Currency; locked: boolean;
+  }>(
+    `select p.id, p.artist_id, p.amount_usd::float8, p.paid_amount::float8, p.paid_currency,
+            ${LOCKED_SQL} locked
+     from payments p where p.batch_id = $1`,
+    [batchId]
+  );
+  const reverted: { paymentId: string; artistId: string; amountUsd: number; paidAmount: number; currency: Currency }[] = [];
+  let locked = 0;
+  for (const p of pays) {
+    if (p.locked) { locked++; continue; }
+    await deletePayment(p.id);
+    reverted.push({ paymentId: p.id, artistId: p.artist_id, amountUsd: n(p.amount_usd), paidAmount: n(p.paid_amount), currency: p.paid_currency });
+  }
+  if (locked === 0) {
+    await query(
+      `update payment_batches set reverted_at = now(), reverted_by = $2 where id = $1 and reverted_at is null`,
+      [batchId, by]
+    );
+  }
+  return { reverted, locked };
 }
 
 /* ----------------------------------------------- tek sanatçının cari hesabı */
@@ -573,6 +743,8 @@ export interface RecordPaymentInput {
    * allocation tutarına eşit olmalı.
    */
   labelSplits?: { periodId: string; labelId: string; amountUsd: number }[];
+  /** Toplu kapatma işlemi (0019) — tekil ödemede boş. */
+  batchId?: string | null;
 }
 
 export async function recordPayment(input: RecordPaymentInput): Promise<{ id: string }> {
@@ -585,6 +757,13 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
   if (input.paidCurrency !== "USD" && !(Number(input.exchangeRate) > 0)) {
     throw new Error(`${input.paidCurrency} ödemede kur girilmeli.`);
   }
+
+  // Label izi verilmediyse (cari hesaptan tekil ödeme) şimdiki kalanlara göre
+  // otomatik üret — işlem dışında okunuyor; aynı sanatçıya eşzamanlı iki
+  // ödeme yalnızca label dağılımını (bakiyeyi değil) etkileyebilir.
+  const labelSplits = input.labelSplits ?? ((await paymentLabelsReady())
+    ? await autoLabelSplits(input.artistId, allocations).catch(() => [])
+    : []);
 
   return transaction(async (c) => {
     // Bu sanatçı için advisory kilit — src/lib/songSplits.ts'teki setSongSplit
@@ -640,6 +819,10 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
     );
     const paymentId = pay.rows[0].id;
 
+    if (input.batchId && (await paymentBatchesReady())) {
+      await c.query(`update payments set batch_id = $2 where id = $1`, [paymentId, input.batchId]);
+    }
+
     for (const a of allocations) {
       await c.query(
         `insert into payment_periods (payment_id, period_id, amount_usd) values ($1,$2,$3)`,
@@ -647,7 +830,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ id: st
       );
     }
 
-    const splits = (input.labelSplits ?? []).filter((x) => x.amountUsd > 0);
+    const splits = labelSplits.filter((x) => x.amountUsd > 0);
     if (splits.length && (await paymentLabelsReady())) {
       for (const x of splits) {
         await c.query(
