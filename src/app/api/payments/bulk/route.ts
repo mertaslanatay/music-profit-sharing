@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBankAccount, planBulkClose, recordPayment } from "@/lib/payments";
+import { createBatch, finishBatch, getBankAccount, planBulkClose, recordPayment } from "@/lib/payments";
 import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
 import { notifyMany, usersForArtist } from "@/lib/notify";
 import { CURRENCIES, type Currency } from "@/lib/types";
@@ -61,6 +61,18 @@ export async function POST(req: Request) {
       ? `${body.paidAt}T12:00:00Z` : null;
     const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
 
+    // Bu kapatmanın işlem kaydı (0019) — sonradan tek seferde geri alınabilsin.
+    const batchId = plan.length
+      ? await createBatch({
+          createdBy: admin?.userId ?? null,
+          labelIds: scope.labelIds,
+          reportIds: scope.reportIds,
+          scopeText: typeof body.scopeText === "string" ? body.scopeText : "",
+          note,
+          paidAt,
+        })
+      : null;
+
     const results: { artistId: string; ok: boolean; amountUsd: number; error?: string }[] = [];
     for (const p of plan) {
       const cur: Currency = banks.get(p.artistId)?.currency ?? "USD";
@@ -78,6 +90,7 @@ export async function POST(req: Request) {
           note,
           paidAt,
           createdBy: admin?.userId ?? null,
+          batchId,
         });
         results.push({ artistId: p.artistId, ok: true, amountUsd: p.amountUsd });
         try {
@@ -91,7 +104,7 @@ export async function POST(req: Request) {
           });
         } catch { /* bildirim ödemeyi düşürmez */ }
         await logAction(admin, "payment_recorded", `artist:${p.artistId}`, {
-          paidAmount, currency: cur, periods: p.allocations.length, via: "bulk",
+          paidAmount, currency: cur, periods: p.allocations.length, via: "bulk", batchId,
         });
       } catch (e) {
         results.push({ artistId: p.artistId, ok: false, amountUsd: p.amountUsd, error: e instanceof Error ? e.message : String(e) });
@@ -99,7 +112,10 @@ export async function POST(req: Request) {
     }
 
     const ok = results.filter((r) => r.ok);
-    await logAction(admin, "payment_bulk_close", null, {
+    if (batchId) {
+      try { await finishBatch(batchId, ok.length, ok.reduce((a, r) => a + r.amountUsd, 0)); } catch { /* yalnızca gösterim */ }
+    }
+    await logAction(admin, "payment_bulk_close", batchId ? `batch:${batchId}` : null, {
       requested: artistIds.length,
       recorded: ok.length,
       failed: results.length - ok.length,
@@ -107,6 +123,6 @@ export async function POST(req: Request) {
       labelIds: scope.labelIds,
       reportIds: scope.reportIds,
     });
-    return NextResponse.json({ results });
+    return NextResponse.json({ results, batchId });
   } catch (e) { return denyResponse(e); }
 }

@@ -13,11 +13,13 @@
  *     kırılımda O label'a yazılır (diğer label'a sızmaz).
  *  4. Parti (rapor) filtresi yalnızca o partinin dönemlerini kapatır.
  *  5. Plan, dönemin genel kalanını asla aşmaz; ikinci kez çalıştırınca boş.
+ *  6. Toplu işlem geri alınınca bakiyeler ve label kırılımı işlem öncesine döner;
+ *     kilitli partiye dokunan ödeme korunur; işlem dışı ödemeye dokunulmaz.
  *
  * Test kendi kayıtlarını üretir, hiçbir şey silmez.
  */
 import { query } from "../src/lib/db";
-import { getPaymentBreakdown, planBulkClose, recordPayment } from "../src/lib/payments";
+import { createBatch, getPaymentBreakdown, listBatches, planBulkClose, recordPayment, revertBatch } from "../src/lib/payments";
 
 let pass = 0;
 let fail = 0;
@@ -121,6 +123,73 @@ async function main() {
   await recordPayment({ artistId: B, allocations: bAll[0].allocations, labelSplits: sp, paidCurrency: "USD", paidAmount: 70 });
   const bb1 = await cell(B, P1, L1), bb2 = await cell(B, P1, L2);
   check("B karışık (etiketsiz+etiketli) sonrası iki label da tam", near(bb1.paid, 60) && near(bb2.paid, 40), `${bb1.paid} / ${bb2.paid}`);
+
+  // 6. toplu işlem + geri alma
+  const C = id(), D = id();
+  const ek = C.slice(0, 8);
+  await query(`insert into artists (id,fold_key,display_name) values ($1,$3,'Bulk C'),($2,$4,'Bulk D')`,
+    [C, D, `bulkc-${ek}`, `bulkd-${ek}`]);
+  const k2 = (r: string, p: string, a: string, l: string, g: number) => query(
+    `insert into credits (report_id,period_id,artist_id,song_id,label_id,share,position,
+                          total_artists,gross,quantity,territory,retailer)
+     values ($1,$2,$3,$4,$5,1,0,1,$6,10,'TR','spotify')`, [r, p, a, S, l, g]);
+  await k2(R1, P1, C, L1, 80); await k2(R1, P1, C, L2, 20); await k2(R2, P3, D, L1, 25);
+  // işlem dışı tekil ödeme: C'ye P1 için 10 (etiketsiz) — geri almada kalmalı
+  await recordPayment({ artistId: C, allocations: [{ periodId: P1, amountUsd: 10 }], paidCurrency: "USD", paidAmount: 10 });
+  const before = await query<{ artist_id: string; balance: string }>(
+    `select artist_id, balance from v_artist_balance where artist_id = any($1::uuid[]) order by artist_id`, [[C, D]]);
+  const beforeC = await cell(C, P1, L1);
+
+  const batchId = await createBatch({ createdBy: null, labelIds: [L1], reportIds: [], scopeText: "test", note: "verify", paidAt: null });
+  check("işlem kaydı oluştu", !!batchId);
+  const plan = await planBulkClose({ artistIds: [C, D], labelIds: [L1], reportIds: [] });
+  for (const it of plan) {
+    await recordPayment({ artistId: it.artistId, allocations: it.allocations, labelSplits: it.labelSplits,
+      paidCurrency: "USD", paidAmount: it.amountUsd, batchId });
+  }
+  const lb = (await listBatches()).find((b) => b.id === batchId);
+  check("listede: 2 ödeme", lb?.active === 2, `${lb?.active} ödeme · $${lb?.activeUsd}`);
+  const cMid = await cell(C, P1, L1);
+  check("işlem sonrası C·L1 tam ödendi", near(cMid.paid, cMid.net), `${cMid.paid}/${cMid.net}`);
+
+  const rv = await revertBatch(batchId!, null);
+  check("geri alma: 2 ödeme silindi", rv.reverted.length === 2 && rv.locked === 0);
+  const after = await query<{ artist_id: string; balance: string }>(
+    `select artist_id, balance from v_artist_balance where artist_id = any($1::uuid[]) order by artist_id`, [[C, D]]);
+  check("bakiyeler işlem öncesine döndü",
+    before.every((b, i) => near(Number(b.balance), Number(after[i].balance))),
+    after.map((x) => Number(x.balance)).join(" / "));
+  const afterC = await cell(C, P1, L1);
+  check("label kırılımı işlem öncesine döndü", near(afterC.paid, beforeC.paid), `${afterC.paid} ≈ ${beforeC.paid}`);
+  const tags = await query(`select 1 from payment_period_labels x join payments p on p.id = x.payment_id where p.batch_id = $1`, [batchId]);
+  check("label izleri de silindi", tags.length === 0);
+  const lb2 = (await listBatches()).find((b) => b.id === batchId);
+  check("işlem 'geri alındı' işaretli", !!lb2?.revertedAt && lb2.active === 0);
+
+  // kilitli parti koruması
+  const kb = await createBatch({ createdBy: null, labelIds: [], reportIds: [R2], scopeText: "kilit", note: null, paidAt: null });
+  const pl2 = await planBulkClose({ artistIds: [D], labelIds: [], reportIds: [R2] });
+  await recordPayment({ artistId: D, allocations: pl2[0].allocations, labelSplits: pl2[0].labelSplits, paidCurrency: "USD", paidAmount: 25, batchId: kb });
+  await query(`update reports set status = 'locked' where id = $1`, [R2]);
+  const rv2 = await revertBatch(kb!, null);
+  check("kilitli partideki ödeme korundu", rv2.reverted.length === 0 && rv2.locked === 1);
+  const lb3 = (await listBatches()).find((b) => b.id === kb);
+  check("kilitli işlem 'geri alındı' sayılmadı", !lb3?.revertedAt && lb3?.locked === 1);
+  await query(`update reports set status = 'published' where id = $1`, [R2]);
+
+  // 7. ters sıra: önce toplu (etiketli) L1, sonra cari hesaptan tekil ödeme → L2'ye gitmeli
+  const E = id();
+  await query(`insert into artists (id,fold_key,display_name) values ($1,$2,'Bulk E')`, [E, `bulke-${E.slice(0, 8)}`]);
+  await k2(R1, P1, E, L1, 100); await k2(R1, P1, E, L2, 50);
+  const pe = await planBulkClose({ artistIds: [E], labelIds: [L1], reportIds: [] });
+  await recordPayment({ artistId: E, allocations: pe[0].allocations, labelSplits: pe[0].labelSplits, paidCurrency: "USD", paidAmount: 100 });
+  await recordPayment({ artistId: E, allocations: [{ periodId: P1, amountUsd: 50 }], paidCurrency: "USD", paidAmount: 50 });
+  const e1 = await cell(E, P1, L1), e2 = await cell(E, P1, L2);
+  check("toplu L1 sonrası tekil ödeme L2'ye yazıldı", near(e1.paid, 100) && near(e2.paid, 50), `${e1.paid} / ${e2.paid}`);
+  const etag = await query<{ l: string; s: string }>(
+    `select x.label_id l, sum(x.amount_usd) s from payment_period_labels x join payments p on p.id=x.payment_id
+     where p.artist_id=$1 group by 1`, [E]);
+  check("tekil ödeme de etiketlendi", etag.length === 2);
 
   console.log(`\n${pass} geçti, ${fail} kaldı`);
   process.exit(fail ? 1 : 0);

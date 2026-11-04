@@ -149,3 +149,27 @@ export async function paymentLabelsReady(): Promise<boolean> {
   }
   return payLabelsCache.ready;
 }
+
+/* --------------------------------------------- toplu işlem kaydı (0019) */
+
+let batchesCache: { ready: boolean; at: number } | null = null;
+
+/** payment_batches tablosu ve payments.batch_id sütunu (0019) kurulu mu? */
+export async function paymentBatchesReady(): Promise<boolean> {
+  const now = Date.now();
+  if (batchesCache && (batchesCache.ready || now - batchesCache.at < RETRY_MS)) {
+    return batchesCache.ready;
+  }
+  try {
+    const row = await queryOne<{ ok: boolean }>(
+      `select to_regclass('public.payment_batches') is not null
+              and exists (select 1 from information_schema.columns
+                          where table_schema = 'public' and table_name = 'payments'
+                            and column_name = 'batch_id') as ok`
+    );
+    batchesCache = { ready: !!row?.ok, at: now };
+  } catch {
+    batchesCache = { ready: false, at: now };
+  }
+  return batchesCache.ready;
+}

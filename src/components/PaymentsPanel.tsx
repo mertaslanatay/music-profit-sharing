@@ -41,6 +41,7 @@ export function PaymentsPanel({
   const [filters, setFilters] = useState<FiltreKey[]>([]);
   const [secili, setSecili] = useState<Set<string>>(new Set());
   const [topluAcik, setTopluAcik] = useState(false);
+  const [islemlerAcik, setIslemlerAcik] = useState(false);
   const [openArtist, setOpenArtist] = useState<BalanceRow | null>(null);
   const [bankArtist, setBankArtist] = useState<BalanceRow | null>(null);
 
@@ -276,6 +277,11 @@ export function PaymentsPanel({
               width={230}
               badge
             />
+            <button type="button" onClick={() => setIslemlerAcik(true)}
+              className="h-9 rounded-xl border border-line bg-card px-3 text-[13px] font-medium text-ink-700 hover:border-ink-300 transition-colors inline-flex items-center gap-2 whitespace-nowrap">
+              <Icon name="list" size={15} className="text-ink-400" />
+              Toplu işlemler
+            </button>
           </div>
         </div>
 
@@ -427,6 +433,9 @@ export function PaymentsPanel({
           onDone={async () => { setSecili(new Set()); await refresh(); }}
         />
       )}
+      {islemlerAcik && (
+        <BatchesDialog onClose={() => setIslemlerAcik(false)} onChanged={refresh} />
+      )}
       {openArtist && (
         <LedgerDrawer artist={openArtist} onClose={() => setOpenArtist(null)} onChanged={refresh} />
       )}
@@ -456,6 +465,7 @@ function BulkCloseDialog({
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sonuc, setSonuc] = useState<Sonuc[] | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10));
   const [not, setNot] = useState("");
   const [kurlar, setKurlar] = useState<Partial<Record<Currency, string>>>({});
@@ -494,11 +504,12 @@ function BulkCloseDialog({
       const r = await fetch("/api/payments/bulk", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...govde, paidAt: tarih, note: not, rates }),
+        body: JSON.stringify({ ...govde, paidAt: tarih, note: not, rates, scopeText: kapsam }),
       });
       const j = await r.json();
       if (!r.ok || !j.results) throw new Error(j.error || "Kaydedilemedi.");
       setSonuc(j.results);
+      setBatchId(j.batchId ?? null);
       await onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -524,7 +535,7 @@ function BulkCloseDialog({
           ) : (
             <>
               <p className="text-[12px] text-ink-500 mr-auto">
-                Her sanatçı için ayrı bir ödeme kaydı oluşur; cari hesaptan tek tek geri alınabilir.
+                Her sanatçı için ayrı ödeme kaydı oluşur. Yanlışsa &quot;Toplu işlemler&quot;den tek seferde geri alabilirsin.
               </p>
               <button type="button" onClick={onClose} disabled={busy}
                 className="h-9 px-4 rounded-full text-[13px] font-medium text-ink-600 hover:bg-ink-900/[0.05] transition-colors">
@@ -556,6 +567,10 @@ function BulkCloseDialog({
                 ))}
               </ul>
             </div>
+          )}
+          {batchId && basarili.length > 0 && (
+            <RevertBox batchId={batchId} count={basarili.length}
+              amountUsd={basarili.reduce((a, s) => a + s.amountUsd, 0)} onDone={onDone} />
           )}
         </div>
       ) : err && !plan ? (
@@ -1280,6 +1295,183 @@ export function BankRequestsPanel() {
         )}
       </Card>
     </div>
+  );
+}
+
+/* ------------------------------------------------ toplu işlemi geri al */
+
+/**
+ * İki adımlı geri alma kutusu: önce "Bu işlemi geri al", sonra açık bir
+ * onay. Tarayıcı confirm() penceresi kullanılmıyor — Ledger tasarımında
+ * kalsın ve otomasyon araçlarını kilitlemesin.
+ */
+function RevertBox({
+  batchId, count, amountUsd, onDone,
+}: { batchId: string; count: number; amountUsd: number; onDone: () => Promise<void> | void }) {
+  const [adim, setAdim] = useState<"bos" | "onay" | "bitti">("bos");
+  const [bildir, setBildir] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [sonuc, setSonuc] = useState<{ reverted: number; amountUsd: number; locked: number } | null>(null);
+
+  const geriAl = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/payments/batches/${batchId}/revert`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notify: bildir }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Geri alınamadı.");
+      setSonuc(j);
+      setAdim("bitti");
+      await onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (adim === "bitti" && sonuc) {
+    return (
+      <div className="rounded-xl border border-line bg-ink-900/[0.02] px-3.5 py-3 text-[12.5px] text-ink-700">
+        <b className="text-ink-900">{num(sonuc.reverted)}</b> ödeme geri alındı · <b className="text-ink-900">{money(sonuc.amountUsd)}</b>.
+        Dönemler tekrar ödenmemiş sayılıyor.
+        {sonuc.locked > 0 && (
+          <span className="block mt-1 text-amber-900">
+            {num(sonuc.locked)} ödeme kilitli bir partiye ait olduğu için korundu.
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-line px-3.5 py-3 space-y-2.5">
+      {adim === "bos" ? (
+        <div className="flex items-center gap-3">
+          <p className="text-[12.5px] text-ink-600 flex-1">Yanlış mı oldu? Bu işlemdeki tüm ödemeleri tek seferde geri alabilirsin.</p>
+          <button type="button" onClick={() => setAdim("onay")}
+            className="h-8 px-3.5 rounded-full border border-line text-[12.5px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors whitespace-nowrap">
+            Bu işlemi geri al
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-[12.5px] text-ink-700">
+            <b className="text-ink-900">{num(count)}</b> ödeme kaydı (<b className="text-ink-900">{money(amountUsd)}</b>) silinecek ve
+            dönemler tekrar ödenmemiş sayılacak. Kilitli partilere ait kayıtlar korunur.
+          </p>
+          <button type="button" onClick={() => setBildir((v) => !v)} aria-pressed={bildir}
+            className="flex items-center gap-2.5 text-[12.5px] text-ink-700">
+            <Box checked={bildir} />
+            Sanatçılara &quot;ödeme kaydın düzeltildi&quot; bildirimi gönder
+          </button>
+          <div className="flex items-center gap-2 justify-end">
+            <button type="button" onClick={() => setAdim("bos")} disabled={busy}
+              className="h-8 px-3.5 rounded-full text-[12.5px] font-medium text-ink-600 hover:bg-ink-900/[0.05] transition-colors">
+              Vazgeç
+            </button>
+            <button type="button" onClick={geriAl} disabled={busy}
+              className="h-8 px-3.5 rounded-full bg-accent-warn text-white text-[12.5px] font-semibold hover:brightness-95 transition disabled:opacity-50 whitespace-nowrap">
+              {busy ? "Geri alınıyor…" : "Evet, geri al"}
+            </button>
+          </div>
+        </>
+      )}
+      {err && <p className="text-[12px] text-accent-rose">{err}</p>}
+    </div>
+  );
+}
+
+type BatchItem = {
+  id: string; createdAt: string; scopeText: string; note: string | null; paidAt: string | null;
+  revertedAt: string | null; count: number; amountUsd: number;
+  active: number; activeUsd: number; locked: number; createdByName: string | null;
+};
+
+function BatchesDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> | void }) {
+  const [items, setItems] = useState<BatchItem[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [acik, setAcik] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/payments/batches");
+      const j = await r.json();
+      if (!r.ok || !j.batches) throw new Error(j.error || "Liste alınamadı.");
+      setItems(j.batches);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const saat = (iso: string) =>
+    new Date(iso).toLocaleString("tr-TR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <Modal open onClose={onClose} title="Toplu işlemler" sub="Son toplu kapatmalar — yanlış olanı tek seferde geri al" width={680}>
+      {err ? (
+        <p className="text-[13px] text-accent-rose">{err}</p>
+      ) : !items ? (
+        <p className="text-[13px] text-ink-500">Yükleniyor…</p>
+      ) : items.length === 0 ? (
+        <Empty title="Henüz toplu kapatma yok" sub="Tablodan sanatçı seçip “Ödendi olarak kapat” dediğinde burada listelenir." icon={<Icon name="list" />} />
+      ) : (
+        <ul className="space-y-2.5">
+          {items.map((b) => {
+            const durumu = b.revertedAt
+              ? { t: "Geri alındı", c: "bg-ink-900/[0.06] text-ink-500" }
+              : b.active === 0
+                ? { t: "Boş", c: "bg-ink-900/[0.06] text-ink-500" }
+                : { t: "Aktif", c: "bg-brand-500/15 text-brand-700" };
+            const geriAlinabilir = !b.revertedAt && b.active - b.locked > 0;
+            return (
+              <li key={b.id} className="rounded-xl2 border border-line bg-card px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-semibold text-ink-900 truncate">{b.scopeText || "Toplu kapatma"}</p>
+                    <p className="text-[12px] text-ink-500 mt-0.5">
+                      {saat(b.createdAt)}{b.createdByName ? ` · ${b.createdByName}` : ""}
+                      {b.note ? ` · ${b.note}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={clsx("text-[13.5px] font-semibold tabular", b.revertedAt ? "text-ink-400 line-through" : "text-ink-900")}>
+                      {money(b.revertedAt ? b.amountUsd || b.activeUsd : b.activeUsd)}
+                    </p>
+                    <p className="text-[11.5px] text-ink-500 tabular">
+                      {b.revertedAt ? `${num(b.count)} ödeme · ${saat(b.revertedAt)} geri alındı` : `${num(b.active)} ödeme`}
+                    </p>
+                  </div>
+                  <span className={clsx("shrink-0 inline-flex items-center h-6 px-2 rounded-full text-[11.5px] font-semibold", durumu.c)}>{durumu.t}</span>
+                </div>
+                {b.locked > 0 && !b.revertedAt && (
+                  <p className="mt-2 text-[12px] text-amber-900">{num(b.locked)} ödeme kilitli partiye ait — geri alınamaz.</p>
+                )}
+                {geriAlinabilir && (
+                  <div className="mt-2.5">
+                    {acik === b.id ? (
+                      <RevertBox batchId={b.id} count={b.active - b.locked} amountUsd={b.activeUsd}
+                        onDone={async () => { await load(); await onChanged(); }} />
+                    ) : (
+                      <button type="button" onClick={() => setAcik(b.id)}
+                        className="h-8 px-3.5 rounded-full border border-line text-[12.5px] font-semibold text-ink-700 hover:bg-ink-900/[0.05] transition-colors">
+                        Geri al…
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Modal>
   );
 }
 
