@@ -36,9 +36,12 @@ const BOS: Profil = {
  */
 export function AdminProfilePanel({
   mfa,
+  nameLocked = false,
 }: {
   /** İki adımlı doğrulama durumu (sunucudan). Kimlik doğrulama kapalıysa null. */
   mfa?: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null;
+  /** Label yöneticisi: ad-soyadı yalnızca yönetici değiştirir (sunucu da reddeder). */
+  nameLocked?: boolean;
 } = {}) {
   const router = useRouter();
   const [p, setP] = useState<Profil>(BOS);
@@ -180,6 +183,7 @@ export function AdminProfilePanel({
             <input
               className="w-full rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
               value={p.firstName}
+              disabled={nameLocked}
               onChange={(e) => set("firstName", e.target.value)}
             />
           </label>
@@ -188,6 +192,7 @@ export function AdminProfilePanel({
             <input
               className="w-full rounded-xl border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-500 transition-colors"
               value={p.lastName}
+              disabled={nameLocked}
               onChange={(e) => set("lastName", e.target.value)}
             />
           </label>

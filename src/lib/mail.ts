@@ -1,3 +1,4 @@
+import { labelUserIds } from "./staff";
 /**
  * Uygulamadan gönderilen e-postalar (M4NM Pulse § 7).
  *
@@ -219,16 +220,20 @@ export async function sendAnnouncementMail(
  * aynı fonksiyonu çağırır.
  */
 export async function emailAnnouncement(
-  title: string, body: string, excludeUserId: string | null
+  title: string, body: string, excludeUserId: string | null,
+  /** Label'a özel duyuru: yalnızca bu label'ların kullanıcıları. Boş = herkes. */
+  labelIds: string[] = []
 ): Promise<void> {
   if (!mailConfigured()) return;
   try {
+    const only = labelIds.length ? await labelUserIds(labelIds) : null;
     const recipients = await query<{ email: string }>(
       `select email from users
        where status = 'active' and role in ('artist','label_manager','accountant')
          and notify_email_announcement = true
-         and ($1::uuid is null or id != $1)`,
-      [excludeUserId]
+         and ($1::uuid is null or id != $1)
+         and ($2::uuid[] is null or id = any($2::uuid[]))`,
+      [excludeUserId, only]
     );
     await sendMailBatch(recipients.map((r) => () => sendAnnouncementMail(r.email, title, body)));
   } catch {

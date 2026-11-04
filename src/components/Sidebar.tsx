@@ -35,6 +35,8 @@ export interface ViewerBadge {
   email: string;
   role: "admin" | "label_manager" | "artist" | "accountant";
   isAdmin: boolean;
+  /** Yönetim ekranına girebilir mi (yönetici veya label yöneticisi)? */
+  isStaff?: boolean;
   /** Sanatçı rolünde hesaba bağlı sanatçı kimlikleri (artists.id). */
   artistIds?: string[];
 }
@@ -136,9 +138,9 @@ export function Sidebar({
       </nav>
 
       <div className="p-3 border-t border-line space-y-0.5">
-        {/* Yönetim yalnızca yöneticide görünür. Bu bir kolaylık; asıl engel
-            sunucu tarafındaki yetki denetimidir. */}
-        {(!viewer || viewer.isAdmin) && (
+        {/* Yönetim yöneticide ve label yöneticisinde görünür. Bu bir kolaylık;
+            asıl engel sunucu tarafındaki yetki denetimidir. */}
+        {(!viewer || viewer.isAdmin || viewer.isStaff) && (
           <button
             type="button"
             onClick={onReset}

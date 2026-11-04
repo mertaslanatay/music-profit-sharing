@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { requireStaff, denyResponse, logAction } from "@/lib/guard";
+import { queryOne } from "@/lib/db";
+import { labelUserIds } from "@/lib/staff";
 import { mailConfigured, sendMail, mailLayout, esc } from "@/lib/mail";
 
 export const runtime = "nodejs";
@@ -14,7 +16,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  */
 export async function POST(req: Request) {
   try {
-    const admin = await requireAdmin("admin_mail_denied");
+    const st = await requireStaff("admin_mail_denied");
+    const admin = st.viewer;
     if (!mailConfigured()) {
       return NextResponse.json(
         { error: "E-posta gönderimi yapılandırılmamış (RESEND_API_KEY yok)." }, { status: 503 }
@@ -29,6 +32,17 @@ export async function POST(req: Request) {
     if (!EMAIL_RE.test(to)) return NextResponse.json({ error: "Geçerli bir e-posta adresi gir." }, { status: 400 });
     if (!subject) return NextResponse.json({ error: "Konu zorunlu." }, { status: 400 });
     if (!message) return NextResponse.json({ error: "Mesaj boş olamaz." }, { status: 400 });
+
+    // Label yöneticisi yalnızca kendi label kapsamındaki kayıtlı kullanıcılara
+    // yazar — serbest adres yok.
+    if (st.labelIds) {
+      const u = await queryOne<{ id: string }>(`select id from users where lower(email) = $1`, [to]);
+      const ok = !!u && (await labelUserIds(st.labelIds)).includes(u.id);
+      if (!ok) {
+        await logAction(admin, "admin_mail_denied", to, { scoped: true });
+        return NextResponse.json({ error: "Yalnızca kendi label'ındaki kullanıcılara e-posta gönderebilirsin." }, { status: 403 });
+      }
+    }
 
     const html = mailLayout({
       preheader: esc(subject),

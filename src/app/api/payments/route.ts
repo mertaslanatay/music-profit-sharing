@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
-import { listBalances, recordPayment } from "@/lib/payments";
-import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { listBalances, listBalancesForLabels, recordPayment } from "@/lib/payments";
+import { requireAdmin, requireStaff, denyResponse, logAction } from "@/lib/guard";
 import { notifyMany, usersForArtist } from "@/lib/notify";
 import { asCurrency } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-/** Bakiye listesi — tüm sanatçıların rakamlarını içerdiği için yalnızca admin. */
+/**
+ * Bakiye listesi. Yönetici tüm sanatçıları; label yöneticisi yalnızca kendi
+ * label'larındaki sanatçıları, yalnızca o label'ların rakamlarıyla alır.
+ */
 export async function GET() {
   try {
-    await requireAdmin("balances_denied");
-    return NextResponse.json({ balances: await listBalances() });
+    const st = await requireStaff("balances_denied");
+    return NextResponse.json({
+      balances: st.labelIds ? await listBalancesForLabels(st.labelIds) : await listBalances(),
+    });
   } catch (e) { return denyResponse(e); }
 }
 

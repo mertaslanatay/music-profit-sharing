@@ -173,3 +173,37 @@ export async function paymentBatchesReady(): Promise<boolean> {
   }
   return batchesCache.ready;
 }
+
+/* --------------------------------------- label'a özel duyurular (0020) */
+
+let annLabelsCache: { ready: boolean; at: number } | null = null;
+
+/** announcements.label_ids (0020) kurulu mu? */
+export async function announcementLabelsReady(): Promise<boolean> {
+  const now = Date.now();
+  if (annLabelsCache && (annLabelsCache.ready || now - annLabelsCache.at < RETRY_MS)) {
+    return annLabelsCache.ready;
+  }
+  try {
+    const row = await queryOne<{ ok: boolean }>(
+      `select exists (select 1 from information_schema.columns
+                      where table_schema = 'public' and table_name = 'announcements'
+                        and column_name = 'label_ids') as ok`
+    );
+    annLabelsCache = { ready: !!row?.ok, at: now };
+  } catch {
+    annLabelsCache = { ready: false, at: now };
+  }
+  return annLabelsCache.ready;
+}
+
+/**
+ * Duyuru görünürlüğü — `a` takma adlı announcements satırı, `$n` kullanıcı
+ * kimliği. Boş label listesi herkese açıktır.
+ */
+export const ANNOUNCEMENT_VISIBLE = (userParam: string) => `(
+  a.label_ids = '{}'
+  or exists (select 1 from user_label_access x where x.user_id = ${userParam} and x.label_id = any(a.label_ids))
+  or exists (select 1 from user_artist_access x join credits c on c.artist_id = x.artist_id
+             where x.user_id = ${userParam} and c.label_id = any(a.label_ids))
+)`;

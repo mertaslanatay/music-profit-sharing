@@ -1,6 +1,7 @@
 import { redirect, unstable_rethrow } from "next/navigation";
 import { listReports, type ReportRow } from "@/lib/queries";
-import { listBalances, type BalanceRow } from "@/lib/payments";
+import { listBalances, listBalancesForLabels, type BalanceRow } from "@/lib/payments";
+import { loadUsersFor } from "@/lib/staff";
 import { AdminTabs } from "@/components/AdminTabs";
 import type { UserListRow } from "@/app/api/admin/users/route";
 import { Icon } from "@/components/ui";
@@ -8,8 +9,7 @@ import type { ViewerBadge } from "@/components/Sidebar";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured, supabaseServer } from "@/lib/supabase/server";
 import { readMfaState, mfaOkFromState } from "@/lib/mfa";
-import { audit, isAdmin, needsMfaVerification, type Viewer } from "@/lib/access";
-import { query } from "@/lib/db";
+import { audit, isAdmin, isLabelManager, isStaff, needsMfaVerification, type Viewer } from "@/lib/access";
 import { listSeparators } from "@/lib/separators";
 import type { Separator } from "@/lib/types";
 
@@ -41,15 +41,16 @@ export default async function AdminPage() {
 }
 
 async function AdminInner() {
-  // Yönetim ekranı tüm sanatçıların rakamlarını gösterir — yönetici dışında
-  // kimse giremez. Bağlantıyı elle yazan da giremez.
+  // Yönetim ekranına yönetici ve label yöneticisi girer. Label yöneticisi
+  // yalnızca kendi label'larının verisini alır — süzme aşağıda, sunucuda.
+  // Başkası (bağlantıyı elle yazan dahil) giremez.
   let viewer: Viewer | null = null;
   if (authConfigured()) {
     const s = await getSession();
     viewer = s.viewer;
     if (!viewer) redirect(s.reason === "no-session" ? "/giris?devam=/admin" : "/beklemede");
     if (needsMfaVerification(viewer)) redirect("/guvenlik");
-    if (!isAdmin(viewer)) {
+    if (!isStaff(viewer)) {
       const m = await requestMeta();
       await audit({
         userId: viewer.userId, action: "admin_page_denied", resource: viewer.email,
@@ -65,8 +66,11 @@ async function AdminInner() {
         email: viewer.email,
         role: viewer.role,
         isAdmin: isAdmin(viewer),
+        isStaff: true,
       }
     : null;
+  // null = tüm label'lar (yönetici / auth kapalı)
+  const labelScope: string[] | null = viewer && isLabelManager(viewer) && !isAdmin(viewer) ? viewer.labelIds : null;
 
   // İki adımlı doğrulama durumu — "Profilim" sekmesindeki Güvenlik bloğu için.
   // Sunucuda okunup prop olarak geçiliyor: yeni bir API ucu açmaya gerek yok
@@ -95,44 +99,20 @@ async function AdminInner() {
   let error: string | null = null;
 
   try {
-    const [rep, bal, userRows, labelRows, artistRows, sepRows] = await Promise.all([
-      listReports(),
-      listBalances(),
-      query<{
-        id: string; email: string; first_name: string; last_name: string;
-        artist_name: string | null; role: string; status: string; status_note: string | null;
-        can_see_label_totals: boolean; can_see_other_artists: boolean;
-        created_at: string; approved_at: string | null; last_seen_at: string | null;
-        label_ids: string[]; artist_ids: string[];
-      }>(`select * from v_user_access order by
-            case status when 'pending' then 0 when 'active' then 1 else 2 end,
-            created_at desc`),
-      query<{ id: string; name: string }>(`select id, name from labels order by name`),
-      query<{ id: string; display_name: string }>(`select id, display_name from artists order by display_name`),
+    const [rep, bal, u, sepRows] = await Promise.all([
+      // Ödeme partileri: label yöneticisinde yalnızca kendi label'ının
+      // kaydı olan partiler, rakamları da yalnızca o label'dan.
+      labelScope ? listReports({ labelIds: labelScope, artistIds: null, denied: false }) : listReports(),
+      labelScope ? listBalancesForLabels(labelScope) : listBalances(),
+      loadUsersFor(labelScope),
       listSeparators(),
     ]);
 
     reports = rep;
     balances = bal;
-    users = userRows.map((r) => ({
-      id: r.id,
-      email: r.email,
-      firstName: r.first_name,
-      lastName: r.last_name,
-      artistName: r.artist_name,
-      role: r.role,
-      status: r.status,
-      statusNote: r.status_note,
-      canSeeLabelTotals: r.can_see_label_totals,
-      canSeeOtherArtists: r.can_see_other_artists,
-      createdAt: r.created_at,
-      approvedAt: r.approved_at,
-      lastSeenAt: r.last_seen_at,
-      labelIds: r.label_ids ?? [],
-      artistIds: r.artist_ids ?? [],
-    }));
-    labels = labelRows;
-    artists = artistRows.map((a) => ({ id: a.id, name: a.display_name }));
+    users = u.users;
+    labels = u.labels;
+    artists = u.artists;
     separators = sepRows;
   } catch (e) {
     error = e instanceof Error ? e.message : "Veritabanına bağlanılamadı.";
@@ -153,6 +133,7 @@ async function AdminInner() {
       separators={separators}
       viewer={viewerBadge}
       mfa={mfa}
+      staffRole={labelScope ? "label_manager" : "admin"}
     />
   );
 }

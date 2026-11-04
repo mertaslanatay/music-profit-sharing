@@ -26,9 +26,11 @@ const KIND_HINT: Record<SeparatorKind, string> = {
 
 interface Props {
   initial: Separator[];
+  /** Label yöneticisi: görür ve dener, değiştiremez (belirteçler tüm label'ları etkiler). */
+  readOnly?: boolean;
 }
 
-export function SeparatorsPanel({ initial }: Props) {
+export function SeparatorsPanel({ initial, readOnly = false }: Props) {
   const [items, setItems] = useState<Separator[]>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +146,9 @@ export function SeparatorsPanel({ initial }: Props) {
           <span className="font-medium text-ink-700">Not:</span> Belirteçler dosya
           yüklenirken uygulanır. Buradaki bir değişiklik <span className="font-medium">geçmiş
           raporları yeniden hesaplamaz</span>, yalnızca bundan sonraki yüklemeleri etkiler.
+          {readOnly && (
+            <> Belirteçler tüm label&apos;ların ayrıştırmasını etkilediği için değişiklikleri yalnızca yönetici yapar.</>
+          )}
         </div>
 
         {items.length === 0 ? (
@@ -157,7 +162,7 @@ export function SeparatorsPanel({ initial }: Props) {
                   <Th>Tür</Th>
                   <Th align="right">Sıra</Th>
                   <Th>Durum</Th>
-                  <Th align="right">İşlem</Th>
+                  {!readOnly && <Th align="right">İşlem</Th>}
                 </tr>
               </thead>
               <tbody>
@@ -185,7 +190,7 @@ export function SeparatorsPanel({ initial }: Props) {
                       <Td>
                         <button
                           onClick={() => toggle(s)}
-                          disabled={busy}
+                          disabled={busy || readOnly}
                           className={clsx(
                             "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors",
                             s.isActive
@@ -198,7 +203,7 @@ export function SeparatorsPanel({ initial }: Props) {
                           {s.isActive ? "Aktif" : "Pasif"}
                         </button>
                       </Td>
-                      <Td align="right">
+                      {!readOnly && <Td align="right">
                         <div className="flex items-center justify-end gap-1.5">
                           <Button variant="ghost" onClick={() => setEditing(s.id)} disabled={busy}>
                             Düzenle
@@ -207,7 +212,7 @@ export function SeparatorsPanel({ initial }: Props) {
                             Sil
                           </Button>
                         </div>
-                      </Td>
+                      </Td>}
                     </tr>
                   )
                 )}
@@ -217,7 +222,7 @@ export function SeparatorsPanel({ initial }: Props) {
         )}
 
         {/* Yeni belirteç */}
-        <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-end gap-2.5">
+        {!readOnly && <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-end gap-2.5">
           <div>
             <label className="block text-[11px] font-medium text-ink-400 mb-1">Yeni belirteç</label>
             <input
@@ -242,7 +247,7 @@ export function SeparatorsPanel({ initial }: Props) {
           <Button variant="primary" onClick={add} disabled={busy || !newToken.trim()}>
             {busy ? "Ekleniyor…" : "Ekle"}
           </Button>
-        </div>
+        </div>}
       </Card>
 
       {/* Canlı deneme */}

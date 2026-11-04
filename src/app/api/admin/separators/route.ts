@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { requireAdmin, requireStaff, denyResponse, logAction } from "@/lib/guard";
 import {
   listSeparators,
   createSeparator,
@@ -19,9 +19,11 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const admin = await requireAdmin("separators_list_denied");
+    // Label yöneticisi görebilir (salt-okunur); değişiklik yalnızca yöneticide —
+    // belirteçler TÜM label'ların ayrıştırmasını etkiler.
+    const st = await requireStaff("separators_list_denied");
     const separators = await listSeparators();
-    await logAction(admin, "separators_list", null, { count: separators.length });
+    await logAction(st.viewer, "separators_list", null, { count: separators.length });
     return NextResponse.json({ separators });
   } catch (e) {
     return denyResponse(e);

@@ -26,11 +26,17 @@ const FILTRELER: { value: FiltreKey; label: string }[] = [
 ];
 
 export function PaymentsPanel({
-  initial, labels = [], reports = [],
+  initial, labels = [], reports = [], limited = false,
 }: {
   initial: BalanceRow[];
   labels?: { id: string; name: string }[];
   reports?: ReportRow[];
+  /**
+   * Label yöneticisi: veri sunucudan zaten kendi label'ına indirgenmiş gelir;
+   * Label menüsü, seçim/toplu kapatma, Toplu işlemler, Banka ve Cari hesap
+   * yok (salt-okunur). Yazma uçları ayrıca sunucuda yalnızca yöneticide.
+   */
+  limited?: boolean;
 }) {
   const [rows, setRows] = useState(initial);
   const [labelIds, setLabelIds] = useState<string[]>([]);
@@ -144,7 +150,9 @@ export function PaymentsPanel({
         ad(labelIds, "Tüm label'lar", (id) => labels.find((l) => l.id === id)?.name, "label"),
         ad(reportIds, "tüm partiler", (id) => { const r = partiler.find((x) => x.id === id); return r && partiAdi(r); }, "parti"),
       ].join(" · ")
-    : "tüm dönemler, net";
+    : limited
+      ? `${labels.map((l) => l.name).join(", ")} · tüm dönemler`
+      : "tüm dönemler, net";
   const baseRow = (r: BalanceRow) => rows.find((x) => x.artistId === r.artistId) ?? r;
 
   const list = useMemo(() => {
@@ -241,7 +249,7 @@ export function PaymentsPanel({
                 className="h-9 rounded-xl border border-line bg-card pl-9 pr-3 text-[13px] text-ink-900 placeholder:text-ink-400 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 w-48"
               />
             </div>
-            {labels.length > 0 && (
+            {labels.length > 0 && !limited && (
               <CheckMenu
                 icon="tag"
                 allLabel="Tüm label'lar"
@@ -277,11 +285,11 @@ export function PaymentsPanel({
               width={230}
               badge
             />
-            <button type="button" onClick={() => setIslemlerAcik(true)}
+            {!limited && <button type="button" onClick={() => setIslemlerAcik(true)}
               className="h-9 rounded-xl border border-line bg-card px-3 text-[13px] font-medium text-ink-700 hover:border-ink-300 transition-colors inline-flex items-center gap-2 whitespace-nowrap">
               <Icon name="list" size={15} className="text-ink-400" />
               Toplu işlemler
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -301,13 +309,13 @@ export function PaymentsPanel({
             <table className="w-full min-w-[1020px]">
               <thead className="bg-ink-900/[0.02] border-b border-line">
                 <tr>
-                  <Th align="left" className="w-10">
+                  {!limited && <Th align="left" className="w-10">
                     <button type="button" onClick={hepsiniSec} disabled={secilebilir.length === 0}
                       aria-label={hepsi ? "Seçimi kaldır" : "Bakiyesi olanların hepsini seç"}
                       className="flex items-center disabled:opacity-40">
                       <Box checked={hepsi} partial={biraz} />
                     </button>
-                  </Th>
+                  </Th>}
                   <Th align="left">Sanatçı</Th>
                   <Th align="right">Hakediş</Th>
                   <Th align="right">Ödenen</Th>
@@ -316,7 +324,7 @@ export function PaymentsPanel({
                   <Th align="center">Bekleyen dönem</Th>
                   <Th align="left">Son ödeme</Th>
                   <Th align="left">Banka</Th>
-                  <Th align="right">İşlem</Th>
+                  {!limited && <Th align="right">İşlem</Th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -325,14 +333,14 @@ export function PaymentsPanel({
                   const olur = r.balance > 0.005;
                   return (
                   <tr key={r.artistId} className={clsx(sec ? "bg-brand-500/[0.06]" : "hover:bg-ink-900/[0.02]")}>
-                    <Td>
+                    {!limited && <Td>
                       <button type="button" onClick={() => olur && tekSec(r.artistId)} disabled={!olur}
                         aria-label={`${r.artistName} — toplu kapatmaya ${sec ? "dahil değil" : "ekle"}`}
                         aria-pressed={sec}
                         className="flex items-center disabled:opacity-30">
                         <Box checked={sec} />
                       </button>
-                    </Td>
+                    </Td>}
                     <Td>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={r.artistName} size={30} />
@@ -379,7 +387,7 @@ export function PaymentsPanel({
                         </span>
                       )}
                     </Td>
-                    <Td align="right">
+                    {!limited && <Td align="right">
                       <div className="flex items-center justify-end gap-2">
                         <button type="button" onClick={() => setBankArtist(baseRow(r))}
                           aria-label={`${r.artistName} — banka bilgileri`}
@@ -392,7 +400,7 @@ export function PaymentsPanel({
                           Cari hesap
                         </button>
                       </div>
-                    </Td>
+                    </Td>}
                   </tr>
                   );
                 })}
@@ -402,7 +410,7 @@ export function PaymentsPanel({
         )}
       </Card>
 
-      {seciliSatirlar.length > 0 && (
+      {!limited && seciliSatirlar.length > 0 && (
         <div className="sticky bottom-4 z-20 flex justify-center pointer-events-none">
           <div className="pointer-events-auto rounded-full bg-card border border-line shadow-pop pl-5 pr-2 py-2 flex items-center gap-4 rise">
             <p className="text-[13px] text-ink-700">
@@ -1188,7 +1196,8 @@ const BANK_STATUS: Record<
 /** Ayrı sekme: banka değişiklik isteklerinin onay/red ve geçmişi.
  * Eskiden Ödemeler sekmesinin üstünde gömülüydü — çok fazla işlem tek
  * sekmede birikince ayrı bir sekmeye taşındı (bkz. AdminSidebar). */
-export function BankRequestsPanel() {
+/** readOnly: label yöneticisi istekleri görür, onay/ret yalnızca yöneticide. */
+export function BankRequestsPanel({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [rows, setRows] = useState<BankChangeRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1271,7 +1280,10 @@ export function BankRequestsPanel() {
                     {r.resolvedAt && ` · yanıt: ${dateTr(r.resolvedAt)}`}
                   </p>
                 </div>
-                {r.status === "pending" && (
+                {r.status === "pending" && readOnly && (
+                  <span className="shrink-0 text-[11.5px] text-ink-400">Yönetici onayı bekliyor</span>
+                )}
+                {r.status === "pending" && !readOnly && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => resolve(r.id, "reject")}
