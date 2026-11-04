@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { requireViewer, denyResponse, logAction } from "@/lib/guard";
 import { isAdmin } from "@/lib/access";
+import { labelManagersOf, staffSideFor } from "@/lib/staff";
 import { getThread, addReply, setThreadStatus, threadOwner, type ThreadStatus } from "@/lib/support";
 import { notify, notifyMany, adminUserIds } from "@/lib/notify";
 import { mailConfigured, sendSupportReplyMail } from "@/lib/mail";
@@ -22,9 +23,15 @@ export async function GET(_req: Request, { params }: Ctx) {
     const { id } = await params;
     if (!isUuid(id)) return NextResponse.json({ error: "Konuşma bulunamadı." }, { status: 404 });
 
+    // Personel tarafı: yönetici her konuşma, label yöneticisi yalnızca kendi
+    // kapsamındaki kullanıcılarınki. Label yöneticisi okuyunca ortak kutu
+    // "okundu" olmaz.
+    const owner = await threadOwner(id);
+    const staff = !viewer ? true : owner ? await staffSideFor(viewer, owner.userId) : false;
     const thread = await getThread(id, {
       userId: viewer?.userId ?? "",
-      isAdmin: viewer ? isAdmin(viewer) : true,
+      isAdmin: staff,
+      markRead: !viewer || isAdmin(viewer) || !staff,
     });
     // getThread, sahibi olmayan bir kullanıcı için null döner — "bulunamadı"
     // ile "yetkin yok" arasında ayrım yapmıyoruz ki konuşma kimliklerini
@@ -59,8 +66,8 @@ export async function POST(req: Request, { params }: Ctx) {
     // konuşmasında "Label ekibi" gibi görünür ve kendi kendine bildirim
     // gönderirdi.
     const sahibi = owner.userId === viewer.userId;
-    const admin = !sahibi && isAdmin(viewer);
-    if (!sahibi && !isAdmin(viewer)) {
+    const admin = !sahibi && (await staffSideFor(viewer, owner.userId));
+    if (!sahibi && !admin) {
       await logAction(viewer, "support_reply_denied", `thread:${id}`);
       return NextResponse.json({ error: "Konuşma bulunamadı." }, { status: 404 });
     }
@@ -97,7 +104,8 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     } else {
       // İşlemi yapan kişiye kendi mesajının bildirimi gitmez.
-      const hedef = (await adminUserIds()).filter((uid) => uid !== viewer.userId);
+      const hedef = [...new Set([...(await adminUserIds()), ...(await labelManagersOf(viewer.userId))])]
+        .filter((uid) => uid !== viewer.userId);
       await notifyMany(hedef, {
         type: "message",
         title: "Destek konuşmasına yeni mesaj",
@@ -132,7 +140,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const owner = await threadOwner(id);
     if (!owner) return NextResponse.json({ error: "Konuşma bulunamadı." }, { status: 404 });
-    if (!isAdmin(viewer) && owner.userId !== viewer.userId) {
+    if (owner.userId !== viewer.userId && !(await staffSideFor(viewer, owner.userId))) {
       await logAction(viewer, "support_status_denied", `thread:${id}`);
       return NextResponse.json({ error: "Konuşma bulunamadı." }, { status: 404 });
     }

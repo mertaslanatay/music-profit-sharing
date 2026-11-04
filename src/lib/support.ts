@@ -53,6 +53,8 @@ interface ListInput {
   ownerId?: string;
   /** Yönetici görünümünde kullanıcıya göre süzme. */
   userId?: string;
+  /** Label yöneticisi: yalnızca bu kullanıcıların konuşmaları. */
+  ownerIds?: string[];
   status?: ThreadStatus | "all";
   /** Konu veya kullanıcı adında arama. */
   q?: string;
@@ -71,6 +73,7 @@ export async function listThreads(input: ListInput): Promise<SupportThread[]> {
 
   if (input.ownerId) where.push(`t.user_id = ${push(input.ownerId)}`);
   if (input.userId) where.push(`t.user_id = ${push(input.userId)}`);
+  if (input.ownerIds) where.push(`t.user_id = any(${push(input.ownerIds)}::uuid[])`);
   if (input.status && input.status !== "all") where.push(`t.status = ${push(input.status)}`);
   if (input.q) {
     const p = push(`%${input.q}%`);
@@ -141,7 +144,7 @@ export async function unreadThreadCount(side: "user" | "admin", ownerId?: string
  */
 export async function getThread(
   threadId: string,
-  viewer: { userId: string; isAdmin: boolean }
+  viewer: { userId: string; isAdmin: boolean; markRead?: boolean }
 ): Promise<ThreadDetail | null> {
   if (!(await supportReady())) return null;
 
@@ -170,8 +173,12 @@ export async function getThread(
   );
 
   // Okundu işareti — okuyan taraf için.
-  const col = viewer.isAdmin ? "admin_read_at" : "user_read_at";
-  await query(`update support_threads set ${col} = now() where id = $1`, [threadId]);
+  // Label yöneticisi okuyunca ortak yönetim kutusu "okundu" olmaz — ana
+  // yönetici mesajı kaçırmasın (markRead: false).
+  if (viewer.markRead !== false) {
+    const col = viewer.isAdmin ? "admin_read_at" : "user_read_at";
+    await query(`update support_threads set ${col} = now() where id = $1`, [threadId]);
+  }
 
   return {
     id: head.id,

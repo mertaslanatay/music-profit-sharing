@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, requestMeta } from "./session";
 import { authConfigured } from "./supabase/server";
-import { audit, isAdmin, canAccessArtist, scopeFor, type Viewer } from "./access";
+import { audit, isAdmin, isLabelManager, canAccessArtist, scopeFor, type Viewer } from "./access";
 
 /**
  * Rota işleyicileri için tek kapı.
@@ -53,6 +53,30 @@ export async function requireAdmin(action = "admin_denied"): Promise<Viewer | nu
     throw new Denied(403, "Bu işlem için yönetici yetkisi gerekiyor.");
   }
   return v;
+}
+
+/**
+ * Yönetim ekranı kapsamı. Tam yönetici için labelIds = null (kısıt yok);
+ * label yöneticisi için atandığı label'lar. Bu kapsam SUNUCUDA, her sorguda
+ * uygulanır — arayüzde gizlemek güvenlik sayılmaz.
+ */
+export interface StaffCtx {
+  viewer: Viewer | null;
+  admin: boolean;
+  /** null = tüm label'lar (yönetici / auth kapalı). */
+  labelIds: string[] | null;
+}
+
+/** Yönetici veya label yöneticisi geçer; diğerleri reddedilir ve kaydedilir. */
+export async function requireStaff(action = "staff_denied"): Promise<StaffCtx> {
+  const v = await requireViewer();
+  if (v === null) return { viewer: null, admin: true, labelIds: null }; // auth kapalı — yerel geliştirme
+  if (isAdmin(v)) return { viewer: v, admin: true, labelIds: null };
+  if (isLabelManager(v)) return { viewer: v, admin: false, labelIds: v.labelIds };
+  const m = await requestMeta();
+  await audit({ userId: v.userId, action, resource: v.email, ip: m.ip, userAgent: m.userAgent,
+                meta: { role: v.role } });
+  throw new Denied(403, "Bu işlem için yönetim yetkisi gerekiyor.");
 }
 
 /** Bu sanatçının verisine erişim — sanatçı kendi kaydını görür, admin hepsini. */

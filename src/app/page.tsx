@@ -11,7 +11,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { Icon } from "@/components/ui";
 import { getSession, requestMeta } from "@/lib/session";
 import { authConfigured } from "@/lib/supabase/server";
-import { scopeFor, isAdmin, needsMfaVerification, audit } from "@/lib/access";
+import { scopeFor, isAdmin, isStaff, needsMfaVerification, audit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -206,6 +206,7 @@ async function Dash({
         email: viewer.email,
         role: viewer.role,
         isAdmin: preview ? false : isAdmin(viewer),
+        isStaff: preview ? false : isStaff(viewer),
         artistIds: viewer.role === "artist" ? viewer.artistIds : undefined,
       } : null}
       preview={preview ? {

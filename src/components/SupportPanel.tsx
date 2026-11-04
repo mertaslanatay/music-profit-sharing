@@ -57,6 +57,9 @@ export function SupportPanel({ mode }: { mode: "user" | "admin" }) {
       const p = new URLSearchParams();
       if (filter !== "all") p.set("status", filter);
       if (q.trim()) p.set("q", q.trim());
+      // Yönetim kutusu: label yöneticisi bununla kendi label kapsamındaki
+      // konuşmaları alır (yönetici için etkisiz).
+      if (mode === "admin") p.set("side", "staff");
       const r = await fetch(`/api/support?${p}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Konuşmalar yüklenemedi.");
@@ -66,7 +69,7 @@ export function SupportPanel({ mode }: { mode: "user" | "admin" }) {
     } finally {
       setLoading(false);
     }
-  }, [filter, q]);
+  }, [filter, q, mode]);
 
   useEffect(() => { void load(); }, [load]);
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireViewer, denyResponse, logAction } from "@/lib/guard";
-import { isAdmin } from "@/lib/access";
+import { isAdmin, isLabelManager } from "@/lib/access";
+import { labelManagersOf, labelUserIds } from "@/lib/staff";
 import { rateLimit } from "@/lib/access";
 import { listThreads, createThread, type ThreadStatus } from "@/lib/support";
 import { notifyMany, adminUserIds } from "@/lib/notify";
@@ -34,14 +35,25 @@ export async function GET(req: Request) {
     const userId = rawUserId && isUuid(rawUserId) ? rawUserId : undefined;
 
     const admin = viewer ? isAdmin(viewer) : true;
+    // Label yöneticisi: yönetim ekranından (?side=staff) kendi label
+    // kapsamındaki kullanıcıların konuşmalarını, /destek'ten kendi
+    // konuşmalarını görür.
+    const staffLm = !admin && !!viewer && isLabelManager(viewer) && url.searchParams.get("side") === "staff";
 
-    const threads = await listThreads(
-      admin
-        ? { side: "admin", status, q, userId }
-        : { side: "user", status, q, ownerId: viewer!.userId }
-    );
+    let threads;
+    if (admin) {
+      threads = await listThreads({ side: "admin", status, q, userId });
+    } else if (staffLm) {
+      const owners = (await labelUserIds(viewer!.labelIds)).filter((x) => x !== viewer!.userId);
+      threads = await listThreads({
+        side: "admin", status, q,
+        ownerIds: userId ? owners.filter((x) => x === userId) : owners,
+      });
+    } else {
+      threads = await listThreads({ side: "user", status, q, ownerId: viewer!.userId });
+    }
 
-    return NextResponse.json({ threads, isAdmin: admin });
+    return NextResponse.json({ threads, isAdmin: admin || staffLm });
   } catch (e) {
     return denyResponse(e);
   }
@@ -97,7 +109,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error ?? "Talep oluşturulamadı." }, { status: 503 });
     }
 
-    await notifyMany(await adminUserIds(), {
+    await notifyMany([...(await adminUserIds()), ...(await labelManagersOf(viewer.userId))], {
       type: "message",
       title: "Yeni destek mesajı",
       body: `${viewer.fullName}: ${subject}`,

@@ -1,18 +1,38 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { requireAdmin, denyResponse, logAction } from "@/lib/guard";
+import { requireStaff, denyResponse, logAction, type StaffCtx } from "@/lib/guard";
+import { announcementLabelsReady } from "@/lib/schema";
 import { emailAnnouncement } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/**
+ * Label yöneticisi yalnızca kendi label'larına hedeflenmiş duyuruya dokunur.
+ * Döner: duyurunun hedef label'ları (e-posta için) ya da null (yetki yok /
+ * bulunamadı — ikisi ayırt edilmez).
+ */
+async function allowed(st: StaffCtx, id: string): Promise<string[] | null> {
+  const ready = await announcementLabelsReady();
+  if (!ready) return st.labelIds ? null : [];
+  const r = await queryOne<{ label_ids: string[] }>(`select label_ids from announcements where id = $1`, [id]);
+  if (!r) return null;
+  const ids = r.label_ids ?? [];
+  if (!st.labelIds) return ids;
+  const mine = new Set(st.labelIds);
+  return ids.length > 0 && ids.every((x) => mine.has(x)) ? ids : null;
+}
+
 /** Duyuruyu düzenle / yayınla / yayından kaldır. */
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
-    const admin = await requireAdmin("announcement_update_denied");
+    const st = await requireStaff("announcement_update_denied");
+    const admin = st.viewer;
     const { id } = await params;
     const b = await req.json().catch(() => ({}));
+    const hedef = await allowed(st, id);
+    if (hedef === null) return NextResponse.json({ error: "Duyuru bulunamadı." }, { status: 404 });
 
     // Yayınlama e-postasını yalnızca YAYINSIZ → YAYINDA geçişinde göndermek
     // için, güncellemeden önceki durumu ayrıca çekiyoruz.
@@ -57,7 +77,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     // İlk yayınlamada e-posta gider; zaten yayındaki bir duyuru metni
     // düzeltilip tekrar publish:true gönderilirse ikinci kez gitmez.
     if (b.publish === true && !before.published_at && row.published_at) {
-      await emailAnnouncement(row.title, row.body, admin?.userId ?? null);
+      await emailAnnouncement(row.title, row.body, admin?.userId ?? null, hedef);
     }
 
     return NextResponse.json({ ok: true });
@@ -68,8 +88,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   try {
-    const admin = await requireAdmin("announcement_delete_denied");
+    const st = await requireStaff("announcement_delete_denied");
+    const admin = st.viewer;
     const { id } = await params;
+    if ((await allowed(st, id)) === null) return NextResponse.json({ error: "Duyuru bulunamadı." }, { status: 404 });
     const row = await queryOne<{ title: string }>(
       `delete from announcements where id = $1 returning title`,
       [id]

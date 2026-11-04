@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne, transaction } from "@/lib/db";
-import { requireAdmin, logAction, denyResponse } from "@/lib/guard";
+import { requireAdmin, requireStaff, logAction, denyResponse } from "@/lib/guard";
+import { limitUserPatch } from "@/lib/staff";
 import { supabaseAdmin, authConfigured } from "@/lib/supabase/server";
 import { notify } from "@/lib/notify";
 import { sendApprovalMail } from "@/lib/mail";
@@ -27,9 +28,12 @@ const VALID_STATUSES = ["active", "suspended"] as const;
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    const admin = await requireAdmin("admin_user_update_denied");
+    // Label yöneticisi de girer ama yalnızca kendi label kapsamında, sınırlı
+    // alanlarla — bkz. limitUserPatch. Kalan yazma kodu ikisi için ortak.
+    const st = await requireStaff("admin_user_update_denied");
+    const admin = st.viewer;
     const { id } = await params;
-    const body = await req.json();
+    let body = await req.json();
 
     // Hedef kullanıcıyı bul
     const target = await queryOne<{
@@ -38,6 +42,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (!target) {
       return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
+    }
+
+    if (st.labelIds) {
+      const lim = await limitUserPatch(st.labelIds, admin!.userId, target, body);
+      if ("error" in lim) {
+        await logAction(admin, "admin_user_update_denied", `user:${id}`, { reason: lim.error, scoped: true });
+        return NextResponse.json({ error: lim.error }, { status: lim.status });
+      }
+      body = lim.body;
     }
 
     // Admin kendini askıya alamaz / düşüremez
@@ -178,6 +191,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     await logAction(admin, "admin_user_update", `user:${id}`, {
       target: target.email,
       action: body.action || "update",
+      scoped: !!st.labelIds,
       role: body.role,
       labelIds: body.labelIds,
       artistIds: body.artistIds,

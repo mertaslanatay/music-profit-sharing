@@ -47,6 +47,7 @@ export function AdminTabs({
   separators,
   viewer,
   mfa,
+  staffRole = "admin",
 }: {
   reports: ReportRow[];
   balances: BalanceRow[];
@@ -57,8 +58,15 @@ export function AdminTabs({
   viewer?: ViewerBadge | null;
   /** İki adımlı doğrulama durumu; kimlik doğrulama kapalıysa null. */
   mfa?: { hasVerifiedFactor: boolean; isFullySatisfied: boolean; factorId: string | null } | null;
+  /**
+   * label_manager: Raporlar ve Denetim yok, panellerin yazma kontrolleri
+   * kapalı ya da sınırlı. Veri zaten sunucuda label'a indirgenmiş geliyor;
+   * bu yalnızca arayüz — asıl engel uç noktalarda.
+   */
+  staffRole?: "admin" | "label_manager";
 }) {
-  const [tab, setTab] = useState<Tab>("reports");
+  const lm = staffRole === "label_manager";
+  const [tab, setTab] = useState<Tab>(lm ? "payments" : "reports");
   const [navOpen, setNavOpen] = useState(false);
   const [pendingBankRequests, setPendingBankRequests] = useState(0);
   const [unreadThreads, setUnreadThreads] = useState(0);
@@ -79,7 +87,7 @@ export function AdminTabs({
   // Mesaj sekmesinin rozeti — okunmamış konuşma sayısı.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/support")
+    fetch("/api/support?side=staff")
       .then((r) => r.json())
       .then((j) => {
         if (!cancelled && Array.isArray(j.threads)) {
@@ -90,7 +98,7 @@ export function AdminTabs({
     return () => { cancelled = true; };
   }, [tab]);
 
-  const tabs: AdminTabDef[] = [
+  const tumSekmeler: AdminTabDef[] = [
     { key: "reports", label: "Raporlar", icon: "file" },
     { key: "payments", label: "Ödemeler", icon: "wallet", badge: openRequests },
     { key: "bank-requests", label: "Banka Talepleri", icon: "bank", badge: pendingBankRequests },
@@ -104,6 +112,8 @@ export function AdminTabs({
     // işlerinden ayrı dursun diye.
     { key: "profile", label: "Profilim", icon: "user" },
   ];
+  const tabs = lm ? tumSekmeler.filter((t) => t.key !== "reports" && t.key !== "audit") : tumSekmeler;
+  const labelAdi = labels.map((l) => l.name).join(", ");
 
   const meta = TITLES[tab];
 
@@ -129,16 +139,18 @@ export function AdminTabs({
         </header>
 
         <div className="flex-1 overflow-y-auto scroll-thin px-4 sm:px-8 py-5 sm:py-6">
-          {tab === "reports" && <AdminPanel initialReports={reports} />}
-          {tab === "payments" && <PaymentsPanel initial={balances} labels={labels} reports={reports} />}
-          {tab === "bank-requests" && <BankRequestsPanel />}
-          {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} />}
+          {tab === "reports" && !lm && <AdminPanel initialReports={reports} />}
+          {tab === "payments" && <PaymentsPanel initial={balances} labels={labels} reports={reports} limited={lm} />}
+          {tab === "bank-requests" && <BankRequestsPanel readOnly={lm} />}
+          {tab === "users" && <UsersPanel initial={users} labels={labels} artists={artists} limited={lm} />}
           {tab === "messages" && <SupportPanel mode="admin" />}
-          {tab === "mail" && <AdminMailPanel users={users} />}
-          {tab === "profile" && <AdminProfilePanel mfa={mfa} />}
-          {tab === "separators" && <SeparatorsPanel initial={separators} />}
-          {tab === "announcements" && <AnnouncementsPanel />}
-          {tab === "audit" && <AuditPanel />}
+          {tab === "mail" && <AdminMailPanel users={users} limited={lm} />}
+          {tab === "profile" && <AdminProfilePanel mfa={lm ? null : mfa} nameLocked={lm} />}
+          {tab === "separators" && <SeparatorsPanel initial={separators} readOnly={lm} />}
+          {tab === "announcements" && (
+            <AnnouncementsPanel audienceNote={lm ? `Yayınlanan duyurular yalnızca ${labelAdi} kullanıcılarının “Güncellemeler” sekmesinde görünür.` : undefined} />
+          )}
+          {tab === "audit" && !lm && <AuditPanel />}
         </div>
       </div>
     </main>

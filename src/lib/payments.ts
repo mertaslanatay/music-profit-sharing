@@ -394,6 +394,70 @@ export async function getPaymentBreakdown(): Promise<PaymentBreakdown> {
   return out;
 }
 
+/**
+ * Kırılımı verilen label'lara indirger ve yeniden indeksler — label
+ * yöneticisine başka label'ın tek bir hücresi bile (kimliği dahil) gitmez.
+ */
+export function filterBreakdown(bd: PaymentBreakdown, labelIds: string[]): PaymentBreakdown {
+  const keep = new Set(labelIds);
+  const out: PaymentBreakdown = { artists: [], periods: [], labels: [], reports: [], cells: [] };
+  const maps = [new Map<number, number>(), new Map<number, number>(), new Map<number, number>(), new Map<number, number>()];
+  const re = <T,>(m: Map<number, number>, src: T[], dst: T[], i: number) => {
+    let j = m.get(i);
+    if (j === undefined) { j = dst.length; dst.push(src[i]); m.set(i, j); }
+    return j;
+  };
+  for (const [a, p, l, r, net, paid] of bd.cells) {
+    if (!keep.has(bd.labels[l])) continue;
+    out.cells.push([
+      re(maps[0], bd.artists, out.artists, a), re(maps[1], bd.periods, out.periods, p),
+      re(maps[2], bd.labels, out.labels, l), re(maps[3], bd.reports, out.reports, r), net, paid,
+    ]);
+  }
+  return out;
+}
+
+/**
+ * Label yöneticisinin Ödemeler tablosu: her sanatçının hakediş / ödenen /
+ * bakiye rakamları YALNIZCA verilen label'lardan. Başka label'daki geliri
+ * (ör. Çiğ'in M4NM payı) hiçbir alana girmez. Banka ve istek bilgisi
+ * sanatçı genelinden.
+ */
+export async function listBalancesForLabels(labelIds: string[]): Promise<BalanceRow[]> {
+  const [base, full] = await Promise.all([listBalances(), getPaymentBreakdown()]);
+  const bd = filterBreakdown(full, labelIds);
+  const by = new Map<string, Map<number, [number, number]>>();
+  for (const [a, p, , , net, paid] of bd.cells) {
+    const id = bd.artists[a];
+    let m = by.get(id);
+    if (!m) { m = new Map(); by.set(id, m); }
+    const v = m.get(p) ?? [0, 0];
+    v[0] += net; v[1] += paid;
+    m.set(p, v);
+  }
+  const out: BalanceRow[] = [];
+  for (const r of base) {
+    const m = by.get(r.artistId);
+    if (!m) continue;
+    let earned = 0, paid = 0, unpaid = 0;
+    let oldest: { sort: number; display: string } | null = null;
+    for (const [p, [pn, pp]] of m) {
+      earned += pn; paid += pp;
+      if (pn - pp > 0.005) {
+        unpaid += 1;
+        const pr = bd.periods[p];
+        if (!oldest || pr.sort < oldest.sort) oldest = pr;
+      }
+    }
+    if (Math.abs(earned) <= 0.005 && paid <= 0.005) continue;
+    out.push({
+      ...r, earned, paid, balance: earned - paid, periodCount: m.size,
+      unpaidPeriods: unpaid, oldestUnpaidSort: oldest?.sort ?? null, oldestUnpaidLabel: oldest?.display ?? null,
+    });
+  }
+  return out.sort((x, y) => y.balance - x.balance || y.earned - x.earned);
+}
+
 /* ------------------------------------------------------- toplu kapatma */
 
 export interface BulkScope {

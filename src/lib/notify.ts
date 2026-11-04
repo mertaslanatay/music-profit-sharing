@@ -1,5 +1,6 @@
 import { query, queryOne } from "./db";
 import { creditsSource } from "./schema";
+import { ANNOUNCEMENT_VISIBLE, announcementLabelsReady } from "./schema";
 
 /**
  * Bildirim merkezi — yazma tarafı (M4NM Pulse § 1).
@@ -189,6 +190,8 @@ export async function inboxFor(userId: string, limit = 50): Promise<InboxSummary
     notifications: [], announcements: [], unread: 0, unreadAnnouncements: 0,
   };
   try {
+    // Label'a özel duyurular (0020) yalnızca o label'ın kullanıcılarına.
+    const vis = (await announcementLabelsReady()) ? `and ${ANNOUNCEMENT_VISIBLE("$1")}` : "";
     const [nRows, aRows, counts] = await Promise.all([
       query<{
         id: string; type: NotificationType; title: string; body: string;
@@ -207,7 +210,7 @@ export async function inboxFor(userId: string, limit = 50): Promise<InboxSummary
         `select a.id, a.title, a.body, a.published_at, r.read_at
          from announcements a
          left join announcement_reads r on r.announcement_id = a.id and r.user_id = $1
-         where a.published_at is not null
+         where a.published_at is not null ${vis}
          order by a.published_at desc limit $2`,
         [userId, limit]
       ),
@@ -216,7 +219,7 @@ export async function inboxFor(userId: string, limit = 50): Promise<InboxSummary
            (select count(*) from notifications
              where user_id = $1 and read_at is null)::int unread,
            (select count(*) from announcements a
-             where a.published_at is not null
+             where a.published_at is not null ${vis}
                and not exists (
                  select 1 from announcement_reads r
                  where r.announcement_id = a.id and r.user_id = $1))::int unread_ann`,

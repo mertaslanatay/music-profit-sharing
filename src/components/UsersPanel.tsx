@@ -16,6 +16,12 @@ interface Props {
   initial: UserListRow[];
   labels: LabelOption[];
   artists: ArtistOption[];
+  /**
+   * Label yöneticisi görünümü: yalnızca sanatçı hesapları düzenlenir, rol ve
+   * askı/ret/silme yok, atama yalnızca kendi label'ları. Sunucu aynı kuralı
+   * ayrıca uygular (limitUserPatch) — bu yalnızca arayüz.
+   */
+  limited?: boolean;
 }
 
 type Filter = "all" | "pending" | "active" | "suspended";
@@ -38,7 +44,7 @@ const dateTr = (iso: string | null) =>
 
 /* ================================================================ panel */
 
-export function UsersPanel({ initial, labels, artists }: Props) {
+export function UsersPanel({ initial, labels, artists, limited = false }: Props) {
   const [users, setUsers] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -261,6 +267,7 @@ export function UsersPanel({ initial, labels, artists }: Props) {
             onAction={act}
             onDelete={delUser}
             busy={busy}
+            limited={limited}
           />
         )}
       </Drawer>
@@ -369,6 +376,7 @@ function UserDetail({
   onAction,
   onDelete,
   busy,
+  limited = false,
 }: {
   user: UserListRow;
   labels: LabelOption[];
@@ -376,7 +384,11 @@ function UserDetail({
   onAction: (id: string, body: Record<string, unknown>, msg: string, kapat?: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   busy: boolean;
+  limited?: boolean;
 }) {
+  // Label yöneticisi personel hesaplarını (yönetici, label yöneticisi,
+  // muhasebe) yalnızca görür.
+  const salt = limited && u.role !== "artist";
   const [role, setRole] = useState(u.role);
   const [selLabels, setSelLabels] = useState<Set<string>>(new Set(u.labelIds));
   const [selArtists, setSelArtists] = useState<Set<string>>(new Set(u.artistIds));
@@ -413,6 +425,14 @@ function UserDetail({
     !setsEqual(selLabels, new Set(u.labelIds)) ||
     !setsEqual(selArtists, new Set(u.artistIds));
 
+  /** Kaydedilmemiş label/sanatçı atamaları — onaylarken birlikte gönderilir. */
+  const atamaFarki = (): Record<string, unknown> => {
+    const b: Record<string, unknown> = {};
+    if (!setsEqual(selLabels, new Set(u.labelIds))) b.labelIds = [...selLabels];
+    if (!setsEqual(selArtists, new Set(u.artistIds))) b.artistIds = [...selArtists];
+    return b;
+  };
+
   const save = () => {
     const body: Record<string, unknown> = {};
     if (role !== u.role) body.role = role;
@@ -427,10 +447,18 @@ function UserDetail({
     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
       {/* Sol: rol + bayraklar */}
       <div className="space-y-4">
+        {salt && (
+          <p className="text-[12.5px] text-ink-500 bg-ink-900/[0.03] border border-line rounded-xl px-3 py-2.5">
+            Bu bir personel hesabı. Rolünü ve erişimini yalnızca yönetici değiştirebilir.
+          </p>
+        )}
         <div>
           <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
             Rol
           </label>
+          {limited ? (
+            <p className="text-[13px] text-ink-900 font-medium">{ROLE_LABEL[u.role] ?? u.role}</p>
+          ) : (
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -440,6 +468,7 @@ function UserDetail({
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
+          )}
         </div>
 
         {/* Sanatçıya özel bayraklar */}
@@ -451,6 +480,7 @@ function UserDetail({
             <input
               type="checkbox"
               checked={canSeeLabelTotals}
+              disabled={salt}
               onChange={(e) => setCanSeeLabelTotals(e.target.checked)}
               className="rounded border-line text-brand-500 focus:ring-brand-500/30"
             />
@@ -460,6 +490,7 @@ function UserDetail({
             <input
               type="checkbox"
               checked={canSeeOtherArtists}
+              disabled={salt}
               onChange={(e) => setCanSeeOtherArtists(e.target.checked)}
               className="rounded border-line text-brand-500 focus:ring-brand-500/30"
             />
@@ -468,8 +499,14 @@ function UserDetail({
         </div>
 
         {/* Durum aksiyonları */}
-        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-line">
-          {u.status === "active" && (
+        {limited && !salt && u.status !== "pending" && (
+          <p className="text-[12px] text-ink-400 pt-2 border-t border-line">
+            Askıya alma ve silme yalnızca yönetici tarafından yapılır.
+          </p>
+        )}
+        {!salt && (
+        <div className={clsx("flex items-center gap-2 flex-wrap pt-2 border-t border-line", limited && u.status !== "pending" && "hidden")}>
+          {!limited && u.status === "active" && (
             <Button
               variant="danger"
               disabled={busy}
@@ -478,7 +515,7 @@ function UserDetail({
               <Icon name="close" size={13} /> Askıya Al
             </Button>
           )}
-          {u.status === "suspended" && (
+          {!limited && u.status === "suspended" && (
             <>
               <Button
                 variant="primary"
@@ -509,22 +546,28 @@ function UserDetail({
               <Button
                 variant="primary"
                 disabled={busy}
-                onClick={() => onAction(u.id, { action: "approve" }, `${name} onaylandı.`, true)}
+                onClick={() => onAction(u.id, { action: "approve", ...atamaFarki() }, `${name} onaylandı.`, true)}
               >
                 <Icon name="check" size={13} /> Onayla
               </Button>
               {/* Reddet, eskiden tablo satırındaydı; işlemler drawer'a
                   taşınırken buraya alındı — kaybolmaması önemliydi. */}
-              <Button
+              {!limited && <Button
                 variant="danger"
                 disabled={busy}
                 onClick={() => onAction(u.id, { action: "reject" }, `${name} reddedildi.`, true)}
               >
                 <Icon name="close" size={13} /> Reddet
-              </Button>
+              </Button>}
             </>
           )}
         </div>
+        )}
+        {limited && u.status === "pending" && (
+          <p className="text-[12px] text-ink-400">
+            Onaylamadan önce sağdan kendi label&apos;ını veya sanatçısını işaretle; onaylarken birlikte kaydedilir.
+          </p>
+        )}
       </div>
 
       {/* Sağ: erişim kapsamı */}
@@ -541,6 +584,7 @@ function UserDetail({
                   <input
                     type="checkbox"
                     checked={selLabels.has(l.id)}
+                    disabled={salt}
                     onChange={() => toggleLabel(l.id)}
                     className="rounded border-line text-brand-500 focus:ring-brand-500/30"
                   />
@@ -593,6 +637,7 @@ function UserDetail({
                       <input
                         type="checkbox"
                         checked={selArtists.has(a.id)}
+                        disabled={salt}
                         onChange={() => toggleArtist(a.id)}
                         className="rounded border-line text-brand-500 focus:ring-brand-500/30 shrink-0"
                       />
@@ -608,7 +653,7 @@ function UserDetail({
         {/* Ödeme bilgileri — yalnızca bir sanatçıya bağlı kullanıcılarda anlamlı.
             Kaydedilmiş IBAN sanatçıya aittir, kullanıcıya değil; bu yüzden
             kullanıcının erişimi olan her sanatçı için ayrı blok gösteriyoruz. */}
-        {selArtists.size > 0 && (
+        {!limited && selArtists.size > 0 && (
           <div>
             <label className="block text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
               Ödeme Bilgileri
@@ -632,7 +677,7 @@ function UserDetail({
         )}
 
         {/* Kaydet */}
-        {hasChanges && (
+        {hasChanges && !salt && !(limited && u.status === "pending") && (
           <div className="flex justify-end">
             <Button variant="primary" disabled={busy} onClick={save}>
               <Icon name="save" size={13} /> Kaydet

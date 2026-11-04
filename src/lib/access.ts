@@ -107,6 +107,17 @@ export const isAdmin = (v: Viewer | null): boolean =>
 export const needsMfaVerification = (v: Viewer | null): boolean =>
   v?.role === "admin" && v.status === "active" && v.mfaOk === false;
 
+/**
+ * Label yöneticisi: yönetim ekranının bir KISMINA, yalnızca atandığı
+ * label'ların verisiyle girer (Raporlar ve Denetim yok, ödemeler salt-okunur).
+ * Label'ı atanmamış label yöneticisi hiçbir şey göremez.
+ */
+export const isLabelManager = (v: Viewer | null): boolean =>
+  v?.role === "label_manager" && v.status === "active" && v.labelIds.length > 0;
+
+/** Yönetim ekranına girebilir mi (tam yönetici veya label yöneticisi)? */
+export const isStaff = (v: Viewer | null): boolean => isAdmin(v) || isLabelManager(v);
+
 /** Ödeme kaydedebilir / yetki atayabilir mi? */
 export const canManagePayments = (v: Viewer | null): boolean => isAdmin(v);
 

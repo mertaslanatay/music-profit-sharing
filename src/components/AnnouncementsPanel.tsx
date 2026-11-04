@@ -20,7 +20,8 @@ const dateTr = (iso: string | null) =>
       })
     : "—";
 
-export function AnnouncementsPanel() {
+/** audienceNote: label yöneticisinde "yalnızca X kullanıcılarına" açıklaması. */
+export function AnnouncementsPanel({ audienceNote }: { audienceNote?: string } = {}) {
   const [items, setItems] = useState<AdminAnnouncement[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -98,7 +99,7 @@ export function AnnouncementsPanel() {
       <Card>
         <CardHead
           title="Yeni duyuru"
-          sub="Yayınlanan duyurular tüm kullanıcıların bildirim panelindeki “Güncellemeler” sekmesinde görünür."
+          sub={audienceNote ?? "Yayınlanan duyurular tüm kullanıcıların bildirim panelindeki “Güncellemeler” sekmesinde görünür."}
         />
         <div className="space-y-3">
           <div>

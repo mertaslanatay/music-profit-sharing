@@ -18,7 +18,8 @@ const ROLE_TR: Record<string, string> = {
  * bir adrese yaz. Destek konuşma kutusundan (Mesajlar sekmesi) bağımsız:
  * burada karşılıklı yazışma yok, tek seferlik bir e-posta gönderimi var.
  */
-export function AdminMailPanel({ users }: { users: UserListRow[] }) {
+/** limited: label yöneticisi — yalnızca kendi kapsamındaki kayıtlı kullanıcılar, serbest adres yok. */
+export function AdminMailPanel({ users, limited = false }: { users: UserListRow[]; limited?: boolean }) {
   const options = useMemo(
     () =>
       [...users]
@@ -70,7 +71,7 @@ export function AdminMailPanel({ users }: { users: UserListRow[] }) {
         konuşmalarından (Mesajlar sekmesi) bağımsız, tek seferlik bir e-postadır.
       </p>
 
-      <div className="flex items-center gap-2 mb-3">
+      <div className={clsx("flex items-center gap-2 mb-3", limited && "hidden")}>
         <button
           type="button"
           onClick={() => setManual(false)}
